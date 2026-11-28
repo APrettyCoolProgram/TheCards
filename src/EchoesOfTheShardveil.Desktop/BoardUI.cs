@@ -87,13 +87,14 @@ internal sealed partial class BoardUI : IDisposable
         this.healthAtlas = healthAtlas;
         this.heroDropRing = heroDropRing;
         this.blankBadge = blankBadge;
-        counterDigits = CounterDigits.Build(counterDigitSheet, CounterDigitHeight);
         this.playerDeck = playerDeck ?? StarterDecks.Create();
         this.draftPlaytest = draftPlaytest;
         tutorial = new BoardTutorial(showGuide: !draftPlaytest);
         duel = NewDuel();
         humanView = duel.View(Human, Human);
         opponentView = duel.View(Opponent, Human);
+        // Built last: if starting the duel throws, the board has created no textures to release.
+        counterDigits = CounterDigits.Build(counterDigitSheet, CounterDigitHeight);
     }
 
     /// <summary>Releases the textures the board created. Textures passed in stay with the caller.</summary>

@@ -13,13 +13,8 @@ internal sealed class BoardScreen : IScreen
     private readonly GameServices services;
     private readonly bool draftPlaytest;
     private readonly WindowControls controls;
-    private readonly Texture2D heroPortrait;
-    private readonly Texture2D opponentPortrait;
-    private readonly Texture2D heroPlaymat;
-    private readonly Texture2D opponentPlaymat;
-    private readonly Texture2D healthAtlas;
-    private readonly Texture2D heroDropRing;
-    private readonly Texture2D blankBadge;
+    // Everything this screen creates, so that one path releases it after a duel or a failed load.
+    private readonly List<IDisposable> resources = [];
     private readonly RasterizerState boardRasterizer;
     private readonly BoardUI board;
     private readonly InputTracker input = new();
@@ -39,17 +34,28 @@ internal sealed class BoardScreen : IScreen
         BoardUI.ValidateSlotLayout(MatchFormats.Active);
         controls = new WindowControls(services.Audio, isBoard: true,
             returnDestination: draftPlaytest ? "the deckbuilder" : null);
-        boardRasterizer = new RasterizerState { ScissorTestEnable = true };
-        heroPortrait = LoadFramedPortrait(device, match.Player.Portrait);
-        heroPlaymat = LoadMatchTexture(device, match.Player.Playmat);
-        healthAtlas = EmbeddedAssets.LoadPremultipliedTexture(device, "Board-Hero-Health.png");
-        opponentPortrait = LoadFramedPortrait(device, match.Opponent.Portrait);
-        opponentPlaymat = LoadMatchTexture(device, match.Opponent.Playmat);
-        heroDropRing = CircleTexture.Create(device, BoardUI.HeroPortraitSize + 6, borderWidth: 3, Color.Transparent);
-        blankBadge = CircleTexture.Create(device, BoardUI.BadgeSize, borderWidth: 1, Color.Black);
-        using var digitSheet = EmbeddedAssets.LoadTexture(device, "Counter-Digits.png");
-        board = new BoardUI(services.SpriteBatch, services.Pixel, services.Font, heroPortrait, healthAtlas,
-            heroDropRing, blankBadge, digitSheet, heroPlaymat, opponentPortrait, opponentPlaymat, help, playerDeck, draftPlaytest);
+        try
+        {
+            boardRasterizer = Own(new RasterizerState { ScissorTestEnable = true });
+            var heroPortrait = Own(LoadFramedPortrait(device, match.Player.Portrait));
+            var heroPlaymat = Own(LoadMatchTexture(device, match.Player.Playmat));
+            var healthAtlas = Own(EmbeddedAssets.LoadPremultipliedTexture(device, "Board-Hero-Health.png"));
+            var opponentPortrait = Own(LoadFramedPortrait(device, match.Opponent.Portrait));
+            var opponentPlaymat = Own(LoadMatchTexture(device, match.Opponent.Playmat));
+            var heroDropRing = Own(CircleTexture.Create(device, BoardUI.HeroPortraitSize + 6, borderWidth: 3,
+                Color.Transparent));
+            var blankBadge = Own(CircleTexture.Create(device, BoardUI.BadgeSize, borderWidth: 1, Color.Black));
+            using var digitSheet = EmbeddedAssets.LoadTexture(device, "Counter-Digits.png");
+            board = Own(new BoardUI(services.SpriteBatch, services.Pixel, services.Font, heroPortrait, healthAtlas,
+                heroDropRing, blankBadge, digitSheet, heroPlaymat, opponentPortrait, opponentPlaymat, help, playerDeck,
+                draftPlaytest));
+        }
+        catch
+        {
+            // The caller never receives a half-built screen, so it cannot dispose it.
+            Dispose();
+            throw;
+        }
     }
 
     /// <inheritdoc />
@@ -125,24 +131,37 @@ internal sealed class BoardScreen : IScreen
     /// <inheritdoc />
     public void Dispose()
     {
-        heroPortrait.Dispose();
-        opponentPortrait.Dispose();
-        heroPlaymat.Dispose();
-        opponentPlaymat.Dispose();
-        healthAtlas.Dispose();
-        heroDropRing.Dispose();
-        blankBadge.Dispose();
-        board.Dispose();
-        boardRasterizer.Dispose();
+        // Newest first, so the board is released before the textures it draws.
+        for (var i = resources.Count - 1; i >= 0; i--)
+        {
+            resources[i].Dispose();
+        }
+        resources.Clear();
+    }
+
+    /// <summary>Records something this screen must release.</summary>
+    /// <typeparam name="T">The kind of resource.</typeparam>
+    /// <param name="resource">The newly created resource.</param>
+    /// <returns>The same resource.</returns>
+    private T Own<T>(T resource) where T : IDisposable
+    {
+        resources.Add(resource);
+        return resource;
     }
 
     /// <summary>Loads a portrait and frames it in a circle.</summary>
     /// <param name="device">The graphics device.</param>
     /// <param name="reference">The AppData image path or embedded resource reference.</param>
     /// <returns>A texture the caller must dispose.</returns>
+    /// <exception cref="InvalidDataException">The reference does not name a readable, square image.</exception>
+    /// <exception cref="IOException">The image file cannot be read.</exception>
     private static Texture2D LoadFramedPortrait(GraphicsDevice device, string reference)
     {
         using var portrait = LoadMatchTexture(device, reference, premultiply: true);
+        if (portrait.Width != portrait.Height)
+        {
+            throw new InvalidDataException($"The portrait '{reference}' must be square.");
+        }
         return CircleTexture.FramePortrait(portrait, BoardUI.HeroPortraitSize, borderWidth: 2);
     }
 
