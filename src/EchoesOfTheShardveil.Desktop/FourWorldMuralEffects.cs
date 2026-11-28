@@ -193,7 +193,7 @@ internal sealed class FourWorldMuralEffects : IDisposable
         for (var i = 0; i < 24; i++)
         {
             var age = LoopPhase(time * (0.59f + i % 4 * 0.14f) + i * 0.618f);
-            var locus = Vector2.Lerp(new(625, 329), new(641, 470), age);
+            var locus = Vector2.Lerp(new(625, 329), new(632, 444), age);
             locus.X += MathF.Sin(age * 12 + i * 7) * (4 + i % 9 * 4) * age;
             DrawGlow(locus, new(5 + i % 5, 11), i % 2 == 0 ? amber : Color.Yellow, 0.64f * FadeInOut(age), -0.43f);
         }

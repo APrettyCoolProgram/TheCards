@@ -1,0 +1,35 @@
+# MainUI banner
+
+- Ruin torches look like real file
+- Lots more fog on the ground
+- Dragon looks like Dragon
+- Dragon wing extends
+- Dragon fire looks real
+- Remove the caslte above the dragon
+- Move the mountain to where the castle was
+- Mountain flowing lava
+- Dragon looking/fire at SR
+- Is SR too tall?
+- SR sheild hand looks wierd
+- SR holding shield in front, fire coming off
+- SR sword bent
+- Moon to slight left of castle
+- Castle bats
+- More lightning that appears and is bright/lights clouds
+- WW looks like WW
+- WW has two arms
+- WW main moving
+- Vampire looks like Vampire
+- Vampire cape moves
+- Fix vampire hand
+- Replace leaves with rain
+- LL looks like LL
+- LL cape up diag
+- LL cape move
+- PB looks like PB
+- Fire boos look real
+- Lightning extend to city
+- Brake lights flicker
+- Tips of towers pulse
+- rain in city
+- Fix light shafts on title
