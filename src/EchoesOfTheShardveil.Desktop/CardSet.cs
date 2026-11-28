@@ -23,7 +23,7 @@ internal static class CardSet
     /// <param name="setName">The set containing the card.</param>
     /// <param name="cardId">The card's stable ID within the set.</param>
     /// <returns>The presentation fields, or null if none are present.</returns>
-    public static CardPresentation? Presentation(string setName, string cardId) =>
+    public static CardPresentation? GetPresentation(string setName, string cardId) =>
         GetSet(setName).Presentation.GetValueOrDefault(cardId);
 
     /// <summary>Gets the cached set and its desktop metadata.</summary>
@@ -31,8 +31,7 @@ internal static class CardSet
     /// <returns>The loaded set.</returns>
     private static LoadedSet GetSet(string setName)
     {
-        if (string.IsNullOrWhiteSpace(setName) || setName is "." or ".." ||
-            setName.IndexOfAny(['/', '\\', ':']) >= 0)
+        if (!AppDataJson.IsSafeName(setName))
         {
             throw new InvalidDataException($"Invalid card set name '{setName}'.");
         }

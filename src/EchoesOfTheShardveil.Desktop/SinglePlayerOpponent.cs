@@ -9,7 +9,7 @@ namespace EchoesOfTheShardveil.Desktop;
 internal static class SinglePlayerOpponent
 {
     /// <summary>The player index the computer controls.</summary>
-    public const int Side = 1;
+    public const int ComputerSide = 1;
 
     /// <summary>The player index of the person it plays against.</summary>
     public const int HumanSide = 0;
@@ -20,13 +20,13 @@ internal static class SinglePlayerOpponent
     /// <returns>A message describing the action, or an empty string when there is nothing worth showing.</returns>
     public static string TakeStep(Duel duel, OpponentProfile profile)
     {
-        var own = duel.View(Side, Side);
-        var enemy = duel.View(HumanSide, Side);
+        var own = duel.View(ComputerSide, ComputerSide);
+        var enemy = duel.View(HumanSide, ComputerSide);
         var hand = own.Hand!;
         if (duel.PendingAttack is not null)
         {
-            var defender = FindUnit(own, unit => unit.CanIntercept);
-            duel.Defend(Side, defender >= 0 ? defender : null);
+            var defender = FindFirstUnitSlot(own, unit => unit.CanIntercept);
+            duel.Defend(ComputerSide, defender >= 0 ? defender : null);
             return defender >= 0 ? $"{own.Units[defender]!.Card.Name} intercepted." : "Opponent took the attack.";
         }
 
@@ -36,7 +36,7 @@ internal static class SinglePlayerOpponent
                 if (own.CanFeedWell && hand.Count > profile.CardsToKeepWhenFeeding)
                 {
                     var shard = Enumerable.Range(0, hand.Count).MaxBy(slot => hand[slot].Cost);
-                    duel.FeedWell(Side, shard);
+                    duel.FeedWell(ComputerSide, shard);
                     return "Opponent fed the Well.";
                 }
                 if (TryPlayCard(duel, own, enemy, profile) is { } played)
@@ -45,19 +45,19 @@ internal static class SinglePlayerOpponent
                 }
                 break;
             case DuelPhase.Battle:
-                var attacker = FindUnit(own, unit => unit.CanAttack);
+                var attacker = FindFirstUnitSlot(own, unit => unit.CanAttack);
                 if (attacker >= 0)
                 {
-                    duel.Attack(Side, attacker);
+                    duel.Attack(ComputerSide, attacker);
                     return $"{own.Units[attacker]!.Card.Name} attacks your Hero.";
                 }
                 break;
             case DuelPhase.End when hand.Count > duel.Format.HandLimit:
-                duel.DiscardToLimit(Side, hand.Count - 1);
+                duel.DiscardToLimit(ComputerSide, hand.Count - 1);
                 return "Opponent discarded to the hand limit.";
         }
 
-        duel.Advance(Side);
+        duel.Advance(ComputerSide);
         return duel.ActivePlayer == HumanSide ? "Your turn begins." : "";
     }
 
@@ -74,10 +74,10 @@ internal static class SinglePlayerOpponent
         foreach (var slot in Enumerable.Range(0, hand.Count).OrderByDescending(index => hand[index].Cost))
         {
             var card = hand[slot];
-            var plays = duel.LegalPlays(Side, slot, includeSpark: profile.SpendSpark);
+            var plays = duel.LegalPlays(ComputerSide, slot, includeSpark: profile.SpendSpark);
             var friendly = RequiredTarget(card) == AbilityTarget.FriendlyUnit;
             var preferred = friendly ? own : enemy;
-            var preferredSide = friendly ? Side : HumanSide;
+            var preferredSide = friendly ? ComputerSide : HumanSide;
             var choices = plays.Where(play => play.Target is null || play.Target.Value.Player == preferredSide).ToArray();
             if (choices.Length == 0)
             {
@@ -94,9 +94,9 @@ internal static class SinglePlayerOpponent
                 : 0);
             if (card.Cost > energy)
             {
-                duel.UseSpark(Side);
+                duel.UseSpark(ComputerSide);
             }
-            duel.Play(Side, slot, choice.Target, choice.BoardSlot);
+            duel.Play(ComputerSide, slot, choice.Target, choice.BoardSlot);
             return card;
         }
         return null;
@@ -115,11 +115,11 @@ internal static class SinglePlayerOpponent
         return abilities.Any(ability => ability.Target == AbilityTarget.ChosenUnit) ? AbilityTarget.ChosenUnit : null;
     }
 
-    /// <summary>Finds the first Unit that matches.</summary>
+    /// <summary>Finds the slot of the first Unit that matches.</summary>
     /// <param name="view">The side to search.</param>
     /// <param name="predicate">The condition.</param>
     /// <returns>The Unit slot, or -1.</returns>
-    private static int FindUnit(PlayerView view, Func<UnitView, bool> predicate)
+    private static int FindFirstUnitSlot(PlayerView view, Func<UnitView, bool> predicate)
     {
         for (var slot = 0; slot < view.Units.Count; slot++)
         {

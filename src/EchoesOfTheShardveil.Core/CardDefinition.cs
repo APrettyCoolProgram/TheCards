@@ -45,7 +45,7 @@ public sealed record CardDefinition(string Id, string Name)
     public IReadOnlyList<CardAbility> GetPlayAbilities()
     {
         var trigger = Type == CardType.Spell ? AbilityTrigger.Spell : AbilityTrigger.Arrival;
-        return Abilities.Where(ability => ability.Trigger == trigger).ToArray();
+        return [.. Abilities.Where(ability => ability.Trigger == trigger)];
     }
 }
 

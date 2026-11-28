@@ -35,6 +35,7 @@ internal sealed class BoardScreen : IScreen
         var device = services.Device;
         var match = MatchSetup.Current;
         var help = BoardHelp.Current;
+        CardRulesText.LoadCatalogs();
         BoardUI.ValidateSlotLayout(MatchFormats.Active);
         controls = new WindowControls(services.Audio, isBoard: true,
             returnDestination: draftPlaytest ? "the deckbuilder" : null);
@@ -150,14 +151,24 @@ internal sealed class BoardScreen : IScreen
     /// <param name="reference">The image path or embedded resource name prefixed with embedded:.</param>
     /// <param name="premultiply">Whether to premultiply alpha for transparent artwork.</param>
     /// <returns>The texture owned by the board screen.</returns>
+    /// <exception cref="InvalidDataException">The reference is invalid or does not name a readable image.</exception>
+    /// <exception cref="IOException">The image file cannot be read.</exception>
     private static Texture2D LoadMatchTexture(GraphicsDevice device, string reference, bool premultiply = false)
     {
         const string embedded = "embedded:";
-        using var stream = reference.StartsWith(embedded, StringComparison.Ordinal)
-            ? EmbeddedAssets.Open(reference[embedded.Length..])
-            : File.OpenRead(AppDataJson.ResolveReference(reference));
-        return premultiply ? Texture2D.FromStream(device, stream, DefaultColorProcessors.PremultiplyAlpha)
-            : Texture2D.FromStream(device, stream);
+        try
+        {
+            using var stream = reference.StartsWith(embedded, StringComparison.Ordinal)
+                ? EmbeddedAssets.Open(reference[embedded.Length..])
+                : File.OpenRead(AppDataJson.ResolveReference(reference));
+            return premultiply ? Texture2D.FromStream(device, stream, DefaultColorProcessors.PremultiplyAlpha)
+                : Texture2D.FromStream(device, stream);
+        }
+        catch (InvalidOperationException error)
+        {
+            // Both a missing embedded name and an undecodable image arrive as this type.
+            throw new InvalidDataException($"Could not load the matchup image '{reference}'.", error);
+        }
     }
 
     /// <summary>

@@ -25,23 +25,33 @@ internal sealed partial class BoardUI
         var player = pointer.Y < layoutHeight / 2 ? Opponent : Human;
         var view = player == Human ? humanView : opponentView;
         var portrait = PortraitBounds(player);
-        var counters = CardCounters(portrait, view);
-        var hovered = PortraitBadges(player, view).Where(badge => Geometry.IsInCircle(badge.Bounds, pointer))
-            .Concat(counters.Where(counter => counter.Bounds.Contains(pointer))).ToArray();
-        if (hovered.Length == 0)
+        var (well, health) = PortraitBadges(player, view);
+        var (removed, discard, deckCounter) = CardCounters(portrait, view);
+        HudCounter? hovered =
+            Geometry.IsInCircle(well.Bounds, pointer) ? well
+            : Geometry.IsInCircle(health.Bounds, pointer) ? health
+            : removed.Bounds.Contains(pointer) ? removed
+            : discard.Bounds.Contains(pointer) ? discard
+            : deckCounter.Bounds.Contains(pointer) ? deckCounter
+            : null;
+        if (hovered is not { Bounds: var badge, Tooltip: var (heading, body) })
         {
             return;
         }
 
-        var (badge, _, (heading, body)) = hovered[0];
-        var deck = counters[2].Bounds;
+        var deck = deckCounter.Bounds;
 
         const int padding = 12;
         const int bodySize = 16;
         var maxLines = Math.Max(1, (layoutHeight - 2 * padding - 36) / (bodySize + 4));
         var lines = BitmapText.Wrap(body, 34, maxLines);
-        heading = BitmapText.Wrap(heading, 34, 1)[0];
-        var width = 2 * padding + BitmapText.Advance(bodySize) * Math.Max(heading.Length, lines.Max(line => line.Length));
+        heading = BitmapText.Truncate(heading, 34);
+        var longest = heading.Length;
+        foreach (var line in lines)
+        {
+            longest = Math.Max(longest, line.Length);
+        }
+        var width = 2 * padding + BitmapText.Advance(bodySize) * longest;
         var height = 2 * padding + 20 + lines.Length * (bodySize + 4);
         // Show it beside the portrait, level with the badge, so it never covers the portrait.
         var y = Math.Clamp(badge.Center.Y - height / 2, 8, layoutHeight - height - 8);
@@ -62,7 +72,7 @@ internal sealed partial class BoardUI
     /// <summary>Draws the tutorial prompt or the current lesson over a dimmed table.</summary>
     private void DrawTutorial()
     {
-        FillRectangle(FullWidth(0, layoutHeight), new Color(0, 0, 0) * 0.75f);
+        FillRectangle(FullWidthBand(0, layoutHeight), new Color(0, 0, 0) * 0.75f);
         DrawBox(CenterInWindow(TutorialPanel), OverlayFill, OverlayEdge);
         var left = CenterInWindow(TutorialPanel).X + 36;
         if (tutorial.IsPrompt && BoardTutorial.Prompt is { } prompt)
@@ -77,7 +87,8 @@ internal sealed partial class BoardUI
         }
 
         var lesson = BoardTutorial.Pages[tutorial.PageIndex];
-        DrawText($"HOW TO PLAY  /  {tutorial.PageIndex + 1} OF {BoardTutorial.Pages.Count}", left,
+        Span<char> text = stackalloc char[64];
+        DrawText(BitmapText.Format(text, $"HOW TO PLAY  /  {tutorial.PageIndex + 1} OF {BoardTutorial.Pages.Count}"), left,
             151 + TutorialOffset, 19, Teal);
         DrawText(lesson.Title, left, 191 + TutorialOffset, 37, Ivory);
         var pointsX = left;
@@ -96,8 +107,8 @@ internal sealed partial class BoardUI
             case TutorialIllustration.Card when lesson.ExampleCard is { } card:
                 var example = CardBounds(left + 12, 245 + TutorialOffset, 135);
                 DrawCard(example, card, false);
-                DrawCenteredText($"EXAMPLE {card.Type.ToString().ToUpperInvariant()}", example.Center.X,
-                    example.Bottom + 8, 14, Muted);
+                DrawCenteredText(BitmapText.Format(text, $"EXAMPLE {CardRulesText.CapitalTypeName(card.Type)}"),
+                    example.Center.X, example.Bottom + 8, 14, Muted);
                 break;
         }
         DrawTutorialPoints(lesson.Points, pointsX, lineWidth);
@@ -127,8 +138,9 @@ internal sealed partial class BoardUI
     private void DrawTutorialPoints(IReadOnlyList<string> points, int left, int lineWidth)
     {
         var y = 250 + TutorialOffset;
-        foreach (var point in points)
+        for (var i = 0; i < points.Count; i++)
         {
+            var point = points[i];
             FillRectangle(new(left + 1, y + 8, 5, 5), Teal);
             foreach (var line in BitmapText.Wrap(point, lineWidth, 5))
             {
@@ -178,14 +190,8 @@ internal sealed partial class BoardUI
 
         var left = 789 + ExtraWidth;
         DrawText(card.Name, left, 107, 30, Ivory);
-        var type = card.Subtype is { Length: > 0 } subtype ? $"{card.Type} / {subtype}" : card.Type.ToString();
-        DrawText($"{type}   |   {card.Cost} energy", left, 144, 18, Teal);
-        var stats = card.Type == CardType.Unit ? $"{card.Power} Power / {card.Health} Health" : "";
-        if (card.Aspect is { Length: > 0 } aspect)
-        {
-            stats = stats.Length > 0 ? $"{stats}   |   Aspect: {aspect}" : $"Aspect: {aspect}";
-        }
-        DrawText(stats, left, 166, 17, Muted);
+        DrawText(inspectorTypeLine, left, 144, 18, Teal);
+        DrawText(inspectorStats, left, 166, 17, Muted);
 
         if (inspectorRows.Length == 0)
         {
@@ -200,5 +206,4 @@ internal sealed partial class BoardUI
             DrawText("Scroll for more", left, 313, 14, Muted);
         }
     }
-
 }

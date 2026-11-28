@@ -17,9 +17,16 @@ internal sealed class QuitWatcher : IDisposable
     // SDL_Event layout: type (uint32), timestamp (uint32), windowID (uint32), then the window event id (byte).
     private const int WindowEventIdOffset = 12;
 
+    /// <summary>The callback SDL runs for each event.</summary>
+    /// <param name="userdata">The value given at registration, which is unused.</param>
+    /// <param name="sdlEvent">A pointer to the SDL event.</param>
+    /// <returns>A value SDL ignores for event watchers.</returns>
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate int EventWatch(nint userdata, nint sdlEvent);
 
+    /// <summary>The shape of SDL's functions that add and remove an event watcher.</summary>
+    /// <param name="filter">A pointer to the callback.</param>
+    /// <param name="userdata">A value passed back to the callback.</param>
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void WatchRegistration(nint filter, nint userdata);
 
@@ -63,6 +70,10 @@ internal sealed class QuitWatcher : IDisposable
         SdlLibrary.Free(ref library);
     }
 
+    /// <summary>Records window close and quit events.</summary>
+    /// <param name="userdata">Unused.</param>
+    /// <param name="sdlEvent">A pointer to the SDL event.</param>
+    /// <returns>1, which SDL ignores for event watchers.</returns>
     private int OnEvent(nint userdata, nint sdlEvent)
     {
         var type = Marshal.ReadInt32(sdlEvent);

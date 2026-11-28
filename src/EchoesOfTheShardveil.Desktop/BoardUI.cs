@@ -16,7 +16,7 @@ namespace EchoesOfTheShardveil.Desktop;
 internal sealed partial class BoardUI : IDisposable
 {
     private const int Human = SinglePlayerOpponent.HumanSide;
-    private const int Opponent = SinglePlayerOpponent.Side;
+    private const int Opponent = SinglePlayerOpponent.ComputerSide;
     private const double ComputerStepSeconds = 0.36;
     private const double HandLiftSeconds = 0.16;
     // The pointer must move this far, squared, before a press on a hand card becomes a drag.
@@ -38,6 +38,8 @@ internal sealed partial class BoardUI : IDisposable
     private int hoveredHand = -1;
     private CardDefinition? inspectedCard;
     private string[] inspectorRows = [];
+    private string inspectorTypeLine = "";
+    private string inspectorStats = "";
     private int inspectorScroll;
     private BoardTutorial tutorial;
     private readonly bool draftPlaytest;
@@ -106,7 +108,7 @@ internal sealed partial class BoardUI : IDisposable
     /// <summary>Advances animations, automatic phases and the computer opponent.</summary>
     /// <param name="elapsed">The time since the previous update.</param>
     /// <param name="pointer">The pointer in board units, or <see langword="null"/> when it is off the board.</param>
-    public void Update(TimeSpan elapsed, Point? pointer = null)
+    public void Update(TimeSpan elapsed, Point? pointer)
     {
         hoverPointer = pointer;
         if (tutorial.IsOpen)
@@ -150,7 +152,7 @@ internal sealed partial class BoardUI : IDisposable
     public void PointerPressed(Point position)
     {
         var slot = !tutorial.IsOpen && duel.Phase == DuelPhase.Main && duel.ActivePlayer == Human
-            ? FindHand(position) : -1;
+            ? FindHandSlotAt(position) : -1;
         if (slot >= 0)
         {
             handDrag = new HandDrag(slot, position, position - PresentedHandBounds(slot).Location);
@@ -194,7 +196,7 @@ internal sealed partial class BoardUI : IDisposable
     /// <param name="position">The pointer in board units.</param>
     public void RightClick(Point position)
     {
-        var slot = !tutorial.IsOpen && handDrag is null ? FindHand(position) : -1;
+        var slot = !tutorial.IsOpen && handDrag is null ? FindHandSlotAt(position) : -1;
         if (slot >= 0)
         {
             Inspect(humanView.Hand![slot]);
@@ -203,7 +205,7 @@ internal sealed partial class BoardUI : IDisposable
 
     /// <summary>Handles a click on the tutorial, the inspector, the buttons or the table.</summary>
     /// <param name="position">The pointer in board units.</param>
-    public void Click(Point position)
+    private void Click(Point position)
     {
         if (tutorial.IsOpen)
         {
@@ -377,7 +379,7 @@ internal sealed partial class BoardUI : IDisposable
     /// </exception>
     private void ClickDuel(Point position)
     {
-        var handSlot = FindHand(position);
+        var handSlot = FindHandSlotAt(position);
         if (handSlot >= 0)
         {
             ClickHandCard(handSlot);
@@ -449,7 +451,7 @@ internal sealed partial class BoardUI : IDisposable
             return;
         }
 
-        var unit = FindUnit(Human, position);
+        var unit = FindUnitSlotAt(Human, position);
         if (AnchorBottomRight(NextButton).Contains(position))
         {
             duel.Defend(Human);
@@ -515,7 +517,7 @@ internal sealed partial class BoardUI : IDisposable
             return;
         }
 
-        var ownSlot = FindUnit(Human, position);
+        var ownSlot = FindUnitSlotAt(Human, position);
         if (ownSlot >= 0 && humanView.Units[ownSlot]?.CanAttack == true)
         {
             selectedAttacker = selectedAttacker == ownSlot ? null : ownSlot;
@@ -528,7 +530,7 @@ internal sealed partial class BoardUI : IDisposable
             return;
         }
 
-        var enemySlot = FindUnit(Opponent, position);
+        var enemySlot = FindUnitSlotAt(Opponent, position);
         if (enemySlot >= 0 && opponentView.Units[enemySlot] is not null)
         {
             duel.Attack(Human, attacker, new(Opponent, enemySlot));
@@ -557,8 +559,14 @@ internal sealed partial class BoardUI : IDisposable
     private void Inspect(CardDefinition card)
     {
         inspectedCard = card;
-        inspectorRows = CardRulesText.Describe(card).SelectMany(rule => BitmapText.Wrap(rule, 42)).ToArray();
+        inspectorRows = [.. CardRulesText.Describe(card).SelectMany(rule => BitmapText.Wrap(rule, 42))];
         inspectorScroll = 0;
+        inspectorTypeLine = $"{CardRulesText.TypeLine(card)}   |   {card.Cost} energy";
+        inspectorStats = card.Type == CardType.Unit ? $"{card.Power} Power / {card.Health} Health" : "";
+        if (card.Aspect is { Length: > 0 } aspect)
+        {
+            inspectorStats = inspectorStats.Length > 0 ? $"{inspectorStats}   |   Aspect: {aspect}" : $"Aspect: {aspect}";
+        }
     }
 
     /// <summary>Closes the inspector.</summary>
@@ -585,7 +593,7 @@ internal sealed partial class BoardUI : IDisposable
     /// <param name="pointer">The pointer, or <see langword="null"/> when it is off the board.</param>
     private void UpdateHandLift(TimeSpan elapsed, Point? pointer)
     {
-        hoveredHand = handDrag is not { Started: true } && pointer is { } position ? FindHand(position) : -1;
+        hoveredHand = handDrag is not { Started: true } && pointer is { } position ? FindHandSlotAt(position) : -1;
         var step = (float)Math.Min(elapsed.TotalSeconds / HandLiftSeconds, 1);
         for (var i = 0; i < humanView.HandCount; i++)
         {
@@ -594,6 +602,12 @@ internal sealed partial class BoardUI : IDisposable
                 : Math.Max(0f, handLift[i] - step);
         }
     }
+
+    /// <summary>A number shown beside or on a portrait, with its hover help.</summary>
+    /// <param name="Bounds">Where it is drawn.</param>
+    /// <param name="Value">The number.</param>
+    /// <param name="Tooltip">The help shown on hover.</param>
+    private readonly record struct HudCounter(Rectangle Bounds, int Value, Tooltip Tooltip);
 
     /// <summary>A press on a hand card that may turn into a drag.</summary>
     /// <param name="slot">The hand slot of the card.</param>

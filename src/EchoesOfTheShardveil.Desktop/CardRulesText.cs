@@ -2,6 +2,7 @@
 // 261127_documentation
 
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using EchoesOfTheShardveil.Core;
 
 namespace EchoesOfTheShardveil.Desktop;
@@ -9,10 +10,26 @@ namespace EchoesOfTheShardveil.Desktop;
 /// <summary>Turns a card's rules data into player-facing text.</summary>
 internal static class CardRulesText
 {
-    private static readonly CardKeyword[] Keywords = Enum.GetValues<CardKeyword>()
-        .Where(keyword => keyword != CardKeyword.None).ToArray();
+    private static readonly CardKeyword[] Keywords =
+        [.. Enum.GetValues<CardKeyword>().Where(keyword => keyword != CardKeyword.None)];
     private static readonly Lazy<Dictionary<string, KeywordText>> Catalog = new(LoadKeywords);
     private static readonly Lazy<AbilityTextCatalog> Abilities = new(LoadAbilities);
+    private static readonly string[] CapitalTypeNames =
+        [.. Enum.GetNames<CardType>().Select(name => name.ToUpperInvariant())];
+    // Card faces are drawn every frame. An entry lasts as long as its card does.
+    private static readonly ConditionalWeakTable<CardDefinition, string> Summaries = [];
+
+    /// <summary>
+    /// Reads the keyword and ability catalogs now, so a screen reports a broken file when it opens instead of
+    /// failing while it draws.
+    /// </summary>
+    /// <exception cref="InvalidDataException">A catalog is invalid or incomplete.</exception>
+    /// <exception cref="IOException">A catalog cannot be read.</exception>
+    public static void LoadCatalogs()
+    {
+        _ = Catalog.Value;
+        _ = Abilities.Value;
+    }
 
     /// <summary>Writes the full rules of a card for the inspector.</summary>
     /// <param name="card">The card to describe.</param>
@@ -24,9 +41,7 @@ internal static class CardRulesText
             if (card.HasKeyword(keyword))
             {
                 var text = Catalog.Value[keyword.ToString()];
-                var reminder = text.ReminderText.Replace("{startingHealth}", MatchFormats.Active.StartingHealth.ToString(CultureInfo.InvariantCulture),
-                    StringComparison.Ordinal);
-                yield return $"{text.Name} - {reminder}";
+                yield return $"{text.Name} - {ExpandStartingHealth(text.ReminderText)}";
             }
         }
 
@@ -36,10 +51,26 @@ internal static class CardRulesText
         }
     }
 
+    /// <summary>Writes a card's type, followed by its subtype if it has one.</summary>
+    /// <param name="card">The card.</param>
+    /// <returns>The type line shown in card details.</returns>
+    public static string TypeLine(CardDefinition card) =>
+        card.Subtype is { Length: > 0 } subtype ? $"{card.Type} / {subtype}" : card.Type.ToString();
+
+    /// <summary>Gets a card type's name in capitals, as printed on a card face.</summary>
+    /// <param name="type">The card type.</param>
+    /// <returns>The name.</returns>
+    public static string CapitalTypeName(CardType type) => CapitalTypeNames[(int)type];
+
     /// <summary>Writes the short text printed on a card face.</summary>
     /// <param name="card">The card to summarize.</param>
     /// <returns>The keyword names, or a short description of the card's effects.</returns>
-    public static string Summarize(CardDefinition card)
+    public static string Summarize(CardDefinition card) => Summaries.GetValue(card, BuildSummary);
+
+    /// <summary>Builds the text that <see cref="Summarize"/> keeps for a card.</summary>
+    /// <param name="card">The card to summarize.</param>
+    /// <returns>The keyword names, or a short description of the card's effects.</returns>
+    private static string BuildSummary(CardDefinition card)
     {
         if (card.Keywords != CardKeyword.None)
         {
@@ -92,11 +123,17 @@ internal static class CardRulesText
     /// <param name="ability">The ability whose values are shown.</param>
     /// <returns>The formatted text.</returns>
     private static string ExpandAbilityText(string template, CardAbility ability) =>
-        template.Replace("{amount}", ability.Amount.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+        ExpandStartingHealth(template
+            .Replace("{amount}", ability.Amount.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
             .Replace("{cost}", ability.Cost.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
-            .Replace("{target}", Abilities.Value.Targets[ability.Target], StringComparison.Ordinal)
-            .Replace("{startingHealth}", MatchFormats.Active.StartingHealth.ToString(CultureInfo.InvariantCulture),
-                StringComparison.Ordinal);
+            .Replace("{target}", Abilities.Value.Targets[ability.Target], StringComparison.Ordinal));
+
+    /// <summary>Fills the starting Health of the active format into display text.</summary>
+    /// <param name="template">The text from a display catalog.</param>
+    /// <returns>The formatted text.</returns>
+    private static string ExpandStartingHealth(string template) =>
+        template.Replace("{startingHealth}", MatchFormats.Active.StartingHealth.ToString(CultureInfo.InvariantCulture),
+            StringComparison.Ordinal);
 
     /// <summary>Reads ability display text and verifies that each engine identifier has a label or template.</summary>
     /// <returns>The complete ability catalog.</returns>

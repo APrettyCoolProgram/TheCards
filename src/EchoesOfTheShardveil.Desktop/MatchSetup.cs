@@ -23,7 +23,7 @@ internal sealed record MatchSetup(string Format, MatchSide Player, MatchSide Opp
     /// <param name="playerDeck">An edited player deck, or null to use the configured recipe.</param>
     /// <returns>The duel waiting for mulligans.</returns>
     public static Duel CreateDuel(IReadOnlyList<CardDefinition>? playerDeck = null) =>
-        new(playerDeck ?? StarterDecks.Create(), StarterDecks.Create(secondDeck: true), format: MatchFormats.Active,
+        new(playerDeck ?? StarterDecks.Create(), StarterDecks.Create(opponentDeck: true), format: MatchFormats.Active,
             playerOneLeader: Current.Player.LoadLeader(), playerTwoLeader: Current.Opponent.LoadLeader());
 
     /// <summary>Reads the configured matchup and verifies its required references.</summary>
@@ -60,6 +60,7 @@ internal sealed record MatchSide(string Deck, string Character, string Portrait,
 
     /// <summary>Loads the character identity for use in the duel.</summary>
     /// <returns>The leader definition for this side.</returns>
+    /// <exception cref="InvalidDataException">The character file is invalid or has no name.</exception>
     public CardDefinition LoadLeader()
     {
         var path = AppDataJson.ResolveReference(Character);

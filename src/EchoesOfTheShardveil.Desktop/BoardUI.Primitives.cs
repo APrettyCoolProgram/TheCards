@@ -13,7 +13,7 @@ internal sealed partial class BoardUI
     /// <param name="label">The text.</param>
     /// <param name="enabled">Whether to draw it as available.</param>
     /// <param name="quiet">Whether a button that is not highlighted keeps bright text.</param>
-    private void DrawButton(Rectangle bounds, string label, bool enabled, bool quiet = false)
+    private void DrawButton(Rectangle bounds, ReadOnlySpan<char> label, bool enabled, bool quiet = false)
     {
         DrawBox(bounds, enabled ? new Color(43, 83, 88) : Panel, enabled ? Teal : Border);
         DrawCenteredText(label, bounds.Center.X, bounds.Y + 8, 21, enabled || quiet ? Ivory : Muted);
@@ -88,7 +88,7 @@ internal sealed partial class BoardUI
     /// <param name="y">The top edge.</param>
     /// <param name="height">The text height.</param>
     /// <param name="color">The color.</param>
-    private void DrawText(string text, int x, int y, int height, Color color) =>
+    private void DrawText(ReadOnlySpan<char> text, int x, int y, int height, Color color) =>
         BitmapText.Draw(spriteBatch, font, text, x, y, height, color);
 
     /// <summary>Draws text centered horizontally.</summary>
@@ -97,6 +97,6 @@ internal sealed partial class BoardUI
     /// <param name="y">The top edge.</param>
     /// <param name="height">The text height.</param>
     /// <param name="color">The color.</param>
-    private void DrawCenteredText(string text, int centerX, int y, int height, Color color) =>
+    private void DrawCenteredText(ReadOnlySpan<char> text, int centerX, int y, int height, Color color) =>
         BitmapText.DrawCentered(spriteBatch, font, text, centerX, y, height, color);
 }

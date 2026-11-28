@@ -64,6 +64,7 @@ internal sealed partial class BoardUI
     private int layoutHeight = Height;
     private int layoutWidth = Width;
 
+    /// <summary>Gets the Play again button, which moves aside for a draft playtest.</summary>
     private Rectangle RematchBounds => draftPlaytest ? DraftRematchButton : RematchButton;
 
     /// <summary>Checks whether a finished draft playtest's return button was clicked.</summary>
@@ -139,12 +140,12 @@ internal sealed partial class BoardUI
     /// <param name="y">The top edge.</param>
     /// <param name="height">The height.</param>
     /// <returns>The band.</returns>
-    private Rectangle FullWidth(int y, int height) => new(0, y, layoutWidth, height);
+    private Rectangle FullWidthBand(int y, int height) => new(0, y, layoutWidth, height);
 
     /// <summary>Gets the top of a player's row of slots.</summary>
     /// <param name="player">The player index.</param>
     /// <returns>The vertical position.</returns>
-    private int SideTop(int player) => player == Human
+    private int RowTop(int player) => player == Human
         ? 352 + ExtraHeight * 3 / 4
         : 122 + ExtraHeight / 4;
 
@@ -171,10 +172,21 @@ internal sealed partial class BoardUI
     /// <param name="width">The width, ideally a multiple of 5.</param>
     /// <returns>The card bounds.</returns>
     private static Rectangle CardBounds(int x, int y, int width = CardWidth) =>
-        new(x, y, width, width / 5 * 7);
+        new(x, y, width, CardHeight(width));
+
+    /// <summary>Gets the height that gives a width the 5:7 shape of a card.</summary>
+    /// <param name="width">The card width.</param>
+    /// <returns>The card height.</returns>
+    private static int CardHeight(int width) => width / 5 * 7;
+
+    /// <summary>Rounds a card width down to a multiple of 5, so its 5:7 height is exact.</summary>
+    /// <param name="width">The available width.</param>
+    /// <returns>The rounded width, at least 5.</returns>
+    private static int SnapCardWidth(int width) => Math.Max(5, width / 5 * 5);
 
     /// <summary>Checks that the configured rows fit within the board's layout at a readable size.</summary>
     /// <param name="format">The match format.</param>
+    /// <exception cref="InvalidDataException">The format has more slots than a row can show.</exception>
     public static void ValidateSlotLayout(DuelFormat format)
     {
         const int maxUnits = (UnitRowWidth + SlotGap) / (MinimumSlotWidth + SlotGap);
@@ -191,14 +203,14 @@ internal sealed partial class BoardUI
     /// <returns>The slot bounds.</returns>
     private Rectangle UnitBounds(int player, int slot) =>
         SlotBounds(UnitRowLeft + ExtraWidth * (slot + 1) / (duel.Format.UnitSlots + 1),
-            SideTop(player), UnitRowWidth, 150, duel.Format.UnitSlots, slot);
+            RowTop(player), UnitRowWidth, 150, duel.Format.UnitSlots, slot);
 
     /// <summary>Gets the position of a Relic slot.</summary>
     /// <param name="player">The player index.</param>
     /// <param name="slot">The Relic slot.</param>
     /// <returns>The slot bounds.</returns>
     private Rectangle RelicBounds(int player, int slot) =>
-        SlotBounds(RelicRowLeft + ExtraWidth, SideTop(player), RelicRowWidth, 131, duel.Format.RelicSlots, slot);
+        SlotBounds(RelicRowLeft + ExtraWidth, RowTop(player), RelicRowWidth, 131, duel.Format.RelicSlots, slot);
 
     /// <summary>Fits cards into a row, preserving its preferred spacing when there is room.</summary>
     /// <param name="left">The row's left edge.</param>
@@ -225,10 +237,10 @@ internal sealed partial class BoardUI
         // Cards are centered in the space to the right of the Hero portrait.
         var available = HandAreaRight + ExtraWidth - HandAreaLeft;
         var width = Math.Min(CardWidth, (available - spacing * (count - 1)) / Math.Max(1, count));
-        width = Math.Max(5, width / 5 * 5);
+        width = SnapCardWidth(width);
         var total = width * count + spacing * (count - 1);
         return CardBounds(HandAreaLeft + (available - total) / 2 + (width + spacing) * slot,
-            layoutHeight - width / 5 * 7 / 2, width);
+            layoutHeight - CardHeight(width) / 2, width);
     }
 
     /// <summary>Gets where a hand card is drawn, including how far hovering has raised it.</summary>
@@ -265,7 +277,7 @@ internal sealed partial class BoardUI
     /// </summary>
     /// <param name="position">The pointer in board units.</param>
     /// <returns>The hand slot, or -1.</returns>
-    private int FindHand(Point position)
+    private int FindHandSlotAt(Point position)
     {
         for (var i = 0; i < humanView.HandCount; i++)
         {
@@ -281,7 +293,7 @@ internal sealed partial class BoardUI
     /// <param name="player">The player index.</param>
     /// <param name="position">The pointer in board units.</param>
     /// <returns>The Unit slot, or -1.</returns>
-    private int FindUnit(int player, Point position)
+    private int FindUnitSlotAt(int player, Point position)
     {
         for (var i = 0; i < duel.Format.UnitSlots; i++)
         {
@@ -297,7 +309,7 @@ internal sealed partial class BoardUI
     /// <param name="portrait">The portrait bounds.</param>
     /// <param name="hour">The clock position.</param>
     /// <returns>The badge bounds.</returns>
-    private static Rectangle RimBadge(Rectangle portrait, float hour)
+    private static Rectangle RimBadgeBounds(Rectangle portrait, float hour)
     {
         var angle = hour / 12f * MathHelper.TwoPi;
         var radius = HeroPortraitSize / 2f;

@@ -11,7 +11,7 @@ namespace EchoesOfTheShardveil.Desktop;
 // Draws the table: playmats, portraits and counters, board slots, the hand, cards and action buttons.
 internal sealed partial class BoardUI
 {
-    // The badge atlas is a grid of numbered badges from 0 to the starting Health.
+    // The badge atlas is a grid of numbered badges from 0 to 20, whatever the format's starting Health.
     private const int HealthAtlasColumns = 6;
     private const int HealthAtlasCount = 21;
 
@@ -35,10 +35,10 @@ internal sealed partial class BoardUI
         SetLayout(view);
         spriteBatch.Begin(samplerState: SamplerState.LinearClamp, rasterizerState: rasterizer,
             transformMatrix: view.Transform);
-        FillRectangle(FullWidth(0, layoutHeight), BackgroundColor);
+        FillRectangle(FullWidthBand(0, layoutHeight), BackgroundColor);
         var split = layoutHeight / 2 - 22;
-        DrawPlaymat(opponentPlaymat, FullWidth(0, split), verticalAnchor: 0.5f);
-        DrawPlaymat(heroPlaymat, FullWidth(split, layoutHeight - split), verticalAnchor: 1f);
+        DrawPlaymat(opponentPlaymat, FullWidthBand(0, split), verticalAnchor: 0.5f);
+        DrawPlaymat(heroPlaymat, FullWidthBand(split, layoutHeight - split), verticalAnchor: 1f);
         DrawSide(Opponent, opponentView);
         DrawSide(Human, humanView);
         DrawStatus();
@@ -92,23 +92,23 @@ internal sealed partial class BoardUI
             spriteBatch.Draw(heroDropRing, ring, attackTarget || hovered ? Gold : Teal);
         }
 
-        foreach (var (bounds, value, _) in PortraitBadges(player, view))
-        {
-            DrawBadge(bounds, value);
-        }
-        foreach (var (bounds, value, _) in CardCounters(portrait, view))
-        {
-            DrawCardCounter(bounds, value);
-        }
+        var (well, health) = PortraitBadges(player, view);
+        DrawBadge(well.Bounds, well.Value);
+        DrawBadge(health.Bounds, health.Value);
+        var (removed, discard, deck) = CardCounters(portrait, view);
+        DrawCardCounter(removed.Bounds, removed.Value);
+        DrawCardCounter(discard.Bounds, discard.Value);
+        DrawCardCounter(deck.Bounds, deck.Value);
 
-        var statusY = player == Human ? SideTop(player) + 86 : portrait.Bottom + 24;
+        var statusY = player == Human ? RowTop(player) + 86 : portrait.Bottom + 24;
         if (view.HasSpark)
         {
             DrawText("SPARK READY", 28, statusY, 12, Gold);
         }
+        Span<char> text = stackalloc char[32];
         if (view.TemporaryEnergy > 0)
         {
-            DrawText($"+{view.TemporaryEnergy} ENERGY", 28, statusY + 18, 12, Gold);
+            DrawText(BitmapText.Format(text, $"+{view.TemporaryEnergy} ENERGY"), 28, statusY + 18, 12, Gold);
         }
 
         for (var i = 0; i < view.Units.Count; i++)
@@ -121,7 +121,7 @@ internal sealed partial class BoardUI
             }
             else
             {
-                DrawEmptySlot(bounds, $"UNIT {i + 1}");
+                DrawEmptySlot(bounds, BitmapText.Format(text, $"UNIT {i + 1}"));
             }
         }
 
@@ -134,7 +134,7 @@ internal sealed partial class BoardUI
             }
             else
             {
-                DrawEmptySlot(bounds, $"RELIC {i + 1}");
+                DrawEmptySlot(bounds, BitmapText.Format(text, $"RELIC {i + 1}"));
             }
         }
     }
@@ -143,31 +143,25 @@ internal sealed partial class BoardUI
     /// <param name="player">The player index.</param>
     /// <param name="view">The player's snapshot.</param>
     /// <returns>Each badge's position, number and help.</returns>
-    private (Rectangle Bounds, int Value, Tooltip Tooltip)[] PortraitBadges(int player, PlayerView view)
+    private (HudCounter Well, HudCounter Health) PortraitBadges(int player, PlayerView view)
     {
         var portrait = PortraitBounds(player);
-        return
-        [
-            (RimBadge(portrait, 12), view.Shards, player == Human ? boardHelp.Well : boardHelp.OpponentWell),
-            (RimBadge(portrait, 6), view.Health, player == Human ? boardHelp.Health : boardHelp.OpponentHealth),
-        ];
+        return (
+            new(RimBadgeBounds(portrait, 12), view.Shards, player == Human ? boardHelp.Well : boardHelp.OpponentWell),
+            new(RimBadgeBounds(portrait, 6), view.Health, player == Human ? boardHelp.Health : boardHelp.OpponentHealth));
     }
 
-    /// <summary>
-    /// Gets the Removed, Discard and Deck counters, in that order. Removed is not in the rules yet and shows zero.
-    /// </summary>
+    /// <summary>Gets the Removed, Discard and Deck counters. Removed is not in the rules yet and shows zero.</summary>
     /// <param name="portrait">The portrait the counters flank.</param>
     /// <param name="view">The player's snapshot.</param>
     /// <returns>Each counter's position, number and help.</returns>
-    private (Rectangle Bounds, int Value, Tooltip Tooltip)[] CardCounters(Rectangle portrait, PlayerView view)
+    private (HudCounter Removed, HudCounter Discard, HudCounter Deck) CardCounters(Rectangle portrait, PlayerView view)
     {
         var bottom = portrait.Bottom - CounterHeight;
-        return
-        [
-            (new(CounterEdge, portrait.Top, CounterWidth, CounterHeight), 0, boardHelp.Removed),
-            (new(CounterEdge, bottom, CounterWidth, CounterHeight), view.Discard.Count, boardHelp.Discard),
-            (new(DeckCounterLeft, bottom, CounterWidth, CounterHeight), view.DeckCount, boardHelp.Deck),
-        ];
+        return (
+            new(new(CounterEdge, portrait.Top, CounterWidth, CounterHeight), 0, boardHelp.Removed),
+            new(new(CounterEdge, bottom, CounterWidth, CounterHeight), view.Discard.Count, boardHelp.Discard),
+            new(new(DeckCounterLeft, bottom, CounterWidth, CounterHeight), view.DeckCount, boardHelp.Deck));
     }
 
     /// <summary>Draws a card-shaped counter with a centered number.</summary>
@@ -177,13 +171,18 @@ internal sealed partial class BoardUI
     {
         DrawBox(bounds, Color.Black, Color.White);
         const int gap = 1; // With odd digit widths this keeps the whole number's width odd.
-        var label = Math.Max(0, value).ToString(CultureInfo.InvariantCulture);
-        var digits = label.Select(character => counterDigits[character - '0']).ToArray();
-        var total = digits.Sum(digit => digit.Width) + gap * (digits.Length - 1);
+        Span<char> label = stackalloc char[11];
+        Math.Max(0, value).TryFormat(label, out var length, provider: CultureInfo.InvariantCulture);
+        var total = gap * (length - 1);
+        foreach (var character in label[..length])
+        {
+            total += counterDigits[character - '0'].Width;
+        }
         var x = bounds.X + (bounds.Width - total) / 2;
         var y = bounds.Y + (bounds.Height - CounterDigitHeight) / 2;
-        foreach (var digit in digits)
+        foreach (var character in label[..length])
         {
+            var digit = counterDigits[character - '0'];
             spriteBatch.Draw(digit, new Vector2(x, y), Color.White);
             x += digit.Width + gap;
         }
@@ -198,8 +197,9 @@ internal sealed partial class BoardUI
         {
             // The atlas stops at 20, so larger numbers are drawn as text on a blank badge.
             spriteBatch.Draw(blankBadge, bounds, Color.White);
-            var label = value.ToString(CultureInfo.InvariantCulture);
-            DrawCenteredText(label, bounds.Center.X, bounds.Center.Y - 9, 18, Color.White);
+            Span<char> label = stackalloc char[11];
+            value.TryFormat(label, out var length, provider: CultureInfo.InvariantCulture);
+            DrawCenteredText(label[..length], bounds.Center.X, bounds.Center.Y - 9, 18, Color.White);
             return;
         }
 
@@ -213,15 +213,19 @@ internal sealed partial class BoardUI
     /// <summary>Draws the result, the pending attack or the latest message.</summary>
     private void DrawStatus()
     {
-        var status = duel.Outcome switch
+        scoped ReadOnlySpan<char> status = duel.Outcome switch
         {
             DuelOutcome.PlayerOneWins => "You win.",
             DuelOutcome.PlayerTwoWins => "Opponent wins.",
             DuelOutcome.Draw => "The duel is a draw.",
-            _ when duel.PendingAttack is { } attack && duel.ActivePlayer == Opponent =>
-                $"Attack on {(attack.Target is { } unit ? humanView.Units[unit.Slot]!.Card.Name : "your Hero")}.",
             _ => message,
         };
+        Span<char> text = stackalloc char[256];
+        if (duel.Outcome == DuelOutcome.Ongoing && duel.PendingAttack is { } attack && duel.ActivePlayer == Opponent)
+        {
+            var defender = attack.Target is { } unit ? humanView.Units[unit.Slot]!.Card.Name : "your Hero";
+            status = BitmapText.Format(text, $"Attack on {defender}.");
+        }
         if (status.Length > 0)
         {
             DrawCenteredText(status, layoutWidth / 2, layoutHeight - 172, 16, Ivory);
@@ -270,8 +274,10 @@ internal sealed partial class BoardUI
         }
 
         var card = humanView.Hand![drag.Slot];
-        foreach (var play in drag.Plays)
+        // Indexing avoids the enumerator that foreach would create each frame.
+        for (var i = 0; i < drag.Plays.Count; i++)
         {
+            var play = drag.Plays[i];
             var bounds = DropBounds(card, play);
             var highlight = bounds.Contains(position) ? Gold : Teal;
             if (card.Type == CardType.Spell && play.Target is null)
@@ -287,7 +293,7 @@ internal sealed partial class BoardUI
 
         // The dragged card shrinks slightly, keeping the grabbed point under the pointer.
         var handWidth = HandBounds(drag.Slot, humanView.HandCount).Width;
-        var previewWidth = Math.Max(5, (int)(handWidth * 0.8f) / 5 * 5);
+        var previewWidth = SnapCardWidth((int)(handWidth * 0.8f));
         var scale = (float)previewWidth / handWidth;
         var location = position.ToVector2() - drag.Offset.ToVector2() * scale;
         DrawCard(CardBounds((int)location.X, (int)location.Y, previewWidth), card, true);
@@ -308,8 +314,10 @@ internal sealed partial class BoardUI
 
         if (duel.Phase == DuelPhase.Mulligan)
         {
+            Span<char> text = stackalloc char[32];
             DrawButton(AnchorBottomRight(NextButton),
-                mulliganSlots.Count == 0 ? "Keep hand" : $"Replace {mulliganSlots.Count} cards", true);
+                mulliganSlots.Count == 0 ? "Keep hand" : BitmapText.Format(text, $"Replace {mulliganSlots.Count} cards"),
+                true);
             return;
         }
 
@@ -370,8 +378,9 @@ internal sealed partial class BoardUI
         var detailFont = Math.Clamp(bounds.Width / 7, 9, enlarged ? 20 : 14);
         var interior = bounds.Width - 2 * inset;
         FillRectangle(new(bounds.X + inset, bounds.Y + 6, interior, 2), selected ? Gold : accent);
-        DrawText($"{card.Type.ToString().ToUpperInvariant()} {card.Cost}", bounds.X + inset, bounds.Y + 11,
-            detailFont, accent);
+        Span<char> text = stackalloc char[32];
+        DrawText(BitmapText.Format(text, $"{CardRulesText.CapitalTypeName(card.Type)} {card.Cost}"), bounds.X + inset,
+            bounds.Y + 11, detailFont, accent);
         var nameRows = BitmapText.Wrap(card.Name, Math.Max(5, interior / BitmapText.Advance(nameFont)), 2);
         for (var i = 0; i < nameRows.Length; i++)
         {
@@ -391,7 +400,7 @@ internal sealed partial class BoardUI
 
         if (card.Type == CardType.Unit)
         {
-            DrawText($"{unit?.Power ?? card.Power}/{card.Health - (unit?.Damage ?? 0)}",
+            DrawText(BitmapText.Format(text, $"{unit?.Power ?? card.Power}/{card.Health - (unit?.Damage ?? 0)}"),
                 bounds.X + inset, bounds.Bottom - nameFont - 5, nameFont, Ivory);
         }
         if (ready || unit is { Exhausted: true })
@@ -406,7 +415,7 @@ internal sealed partial class BoardUI
     /// <summary>Draws an empty board slot.</summary>
     /// <param name="bounds">The slot bounds.</param>
     /// <param name="label">The slot's name.</param>
-    private void DrawEmptySlot(Rectangle bounds, string label)
+    private void DrawEmptySlot(Rectangle bounds, ReadOnlySpan<char> label)
     {
         FillRoundedRectangle(bounds, Recess);
         DrawDashedBorder(bounds, new Color(72, 104, 112));

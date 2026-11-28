@@ -73,8 +73,8 @@ internal sealed class TitleBurn
     /// <summary>Eases from 0 to 1 as a value moves between two points.</summary>
     /// <param name="start">Where the result is 0.</param>
     /// <param name="end">Where the result is 1.</param>
-    /// <param name="time">The value to evaluate.</param>
+    /// <param name="value">The value to evaluate.</param>
     /// <returns>A smooth step clamped to the range 0 to 1.</returns>
-    public static float Ramp(float start, float end, float time) =>
-        MathHelper.SmoothStep(0f, 1f, Math.Clamp((time - start) / (end - start), 0f, 1f));
+    public static float Ramp(float start, float end, float value) =>
+        MathHelper.SmoothStep(0f, 1f, Math.Clamp((value - start) / (end - start), 0f, 1f));
 }

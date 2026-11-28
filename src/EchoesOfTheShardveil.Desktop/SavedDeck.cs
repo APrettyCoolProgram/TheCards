@@ -58,8 +58,7 @@ internal sealed class SavedDeck
     /// <returns>Whether the deck was saved and applied.</returns>
     public bool TryApply(IEnumerable<(string Set, CardDefinition Card, int Copies)> entries)
     {
-        var data = new DeckData(entries.Select(entry => new DeckEntry(entry.Set, entry.Card.Id, entry.Copies))
-            .ToArray());
+        var data = new DeckData([.. entries.Select(entry => new DeckEntry(entry.Set, entry.Card.Id, entry.Copies))]);
         try
         {
             var deck = Resolve(data.Cards);
@@ -113,12 +112,11 @@ internal sealed class SavedDeck
             }
             cards.AddRange(Enumerable.Repeat(card, entry.Copies));
         }
-        if (cards.Count != format.DeckSize || cards.GroupBy(card => card.Name, StringComparer.OrdinalIgnoreCase)
-            .Any(group => group.Count() > format.MaxCopiesPerName))
+        if (cards.Count != format.DeckSize || format.ExceedsCopyLimit(cards))
         {
             throw new InvalidDataException("The saved deck exceeds the current format's deck or copy limits.");
         }
-        return cards.ToArray();
+        return [.. cards];
     }
 
     /// <summary>The saved deck document.</summary>

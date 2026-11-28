@@ -104,7 +104,7 @@ internal sealed class BoardTutorial
 
         var formatText = new FormatText(MatchFormats.Active);
         var pages = tutorial.Pages.Select(page => new TutorialPage(page.Title,
-            page.Points.Select(formatText.Expand).ToArray(),
+            [.. page.Points.Select(formatText.Expand)],
             page.Illustration, ResolveExample(page, tutorial, path))).ToArray();
         return new TutorialContent(pages, prompt);
     }

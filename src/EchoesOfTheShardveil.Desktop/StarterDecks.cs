@@ -12,10 +12,10 @@ internal static class StarterDecks
     private static readonly Lazy<LoadedDeck> Opponent = new(() => Load(MatchSetup.Current.Opponent.Deck));
 
     /// <summary>Creates a copy of the requested starter deck.</summary>
-    /// <param name="secondDeck">Whether to use the opponent's deck recipe.</param>
+    /// <param name="opponentDeck">Whether to use the opponent's deck recipe.</param>
     /// <returns>The cards in recipe order, including copies.</returns>
-    public static IReadOnlyList<CardDefinition> Create(bool secondDeck = false) =>
-        (CardDefinition[])(secondDeck ? Opponent.Value : Player.Value).Cards.Clone();
+    public static IReadOnlyList<CardDefinition> Create(bool opponentDeck = false) =>
+        (CardDefinition[])(opponentDeck ? Opponent.Value : Player.Value).Cards.Clone();
 
     /// <summary>Gets the playable card pool from the sets named in the player recipe.</summary>
     public static IReadOnlyList<(string Set, CardDefinition Card)> PlayerPool => Player.Value.Pool;
@@ -74,15 +74,14 @@ internal static class StarterDecks
         {
             throw new InvalidDataException($"'{path}' must contain exactly {format.DeckSize} cards.");
         }
-        if (cards.GroupBy(card => card.Name, StringComparer.OrdinalIgnoreCase)
-            .Any(group => group.Count() > format.MaxCopiesPerName))
+        if (format.ExceedsCopyLimit(cards))
         {
             throw new InvalidDataException($"'{path}' exceeds the copy limit for a card name.");
         }
         var playablePool = pools.SelectMany(pool => pool.Value.Values
             .Where(card => Duel.IsPlayableCard(card, format))
             .Select(card => (Set: pool.Key, Card: card))).ToArray();
-        return new LoadedDeck(cards.ToArray(), playablePool);
+        return new LoadedDeck([.. cards], playablePool);
     }
 
     /// <summary>A starter deck and its collection.</summary>

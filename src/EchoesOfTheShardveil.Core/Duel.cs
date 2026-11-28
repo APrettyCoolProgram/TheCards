@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 
 namespace EchoesOfTheShardveil.Core;
 
-/// <summary>Runs a deterministic two-player Alpha.02 duel when supplied with a seed.</summary>
+/// <summary>Runs a two-player duel under a <see cref="DuelFormat"/>. A seed makes it deterministic.</summary>
 public sealed class Duel
 {
     /// <summary>The default starting Health and healing cap.</summary>
@@ -105,7 +105,7 @@ public sealed class Duel
         return new(owner.Leader, owner.Health, owner.Deck.Count, owner.Hand.Count,
             player == viewer ? owner.Hand.ToArray() : null, owner.Well.Count, owner.ReadyShards,
             owner.TemporaryEnergy, owner.HasSpark, Phase == DuelPhase.Main && ActivePlayer == player &&
-            CanReceiveShard(owner), units, owner.Relics.ToArray(), owner.Discard.ToArray());
+            CanReceiveShard(owner), units, [.. owner.Relics], [.. owner.Discard]);
     }
 
     /// <summary>Exchanges selected cards once during setup. An empty selection keeps the hand.</summary>
@@ -259,12 +259,12 @@ public sealed class Duel
         {
             CardType.Unit => EmptySlots(owner.Units),
             CardType.Relic => EmptySlots(owner.Relics),
-            _ => new int?[] { null },
+            _ => [null],
         };
         var abilities = card.GetPlayAbilities();
         if (IsTargetLegal(player, abilities, null))
         {
-            return slots.Select(slot => new CardPlay(slot, null)).ToArray();
+            return [.. slots.Select(slot => new CardPlay(slot, null))];
         }
 
         var plays = new List<CardPlay>();
@@ -422,7 +422,7 @@ public sealed class Duel
     /// <param name="row">The Unit or Relic slots.</param>
     /// <returns>The empty slot indexes in order.</returns>
     private static int?[] EmptySlots<T>(T?[] row) where T : class =>
-        Enumerable.Range(0, row.Length).Where(slot => row[slot] is null).Select(slot => (int?)slot).ToArray();
+        [.. Enumerable.Range(0, row.Length).Where(slot => row[slot] is null).Select(slot => (int?)slot)];
 
     /// <summary>Picks the slot a card will occupy.</summary>
     /// <typeparam name="T">The kind of occupant.</typeparam>
@@ -439,7 +439,7 @@ public sealed class Duel
 
     /// <summary>Determines whether a player's Well can still be fed this turn.</summary>
     /// <param name="owner">The player.</param>
-    /// <returns><see langword="true"/> if the Well has room and was not fed this turn.</returns>
+    /// <returns><see langword="true"/> if the Well has room and the turn's feed limit is not used up.</returns>
     private bool CanReceiveShard(Player owner) =>
         owner.WellFeedsThisTurn < Format.WellFeedsPerTurn && owner.Well.Count < Format.WellLimit;
 
@@ -778,11 +778,6 @@ public sealed class Duel
         return slots;
     }
 
-    /// <summary>Checks whether a card definition can be included in a deck.</summary>
-    /// <param name="card">The card to check.</param>
-    /// <returns>Whether the card has a playable type and valid stats and abilities.</returns>
-    public static bool IsPlayableCard(CardDefinition card) => IsPlayableCard(card, DefaultFormat);
-
     /// <summary>Checks the card's type, stats and costs against the supplied format.</summary>
     /// <param name="card">The card to check.</param>
     /// <param name="format">The format whose Well capacity limits costs.</param>
@@ -802,14 +797,13 @@ public sealed class Duel
         var cards = deck.ToList();
         if (cards.Count != Format.DeckSize ||
             cards.Any(card => !IsPlayableCard(card, Format)) ||
-            cards.GroupBy(card => card.Name, StringComparer.OrdinalIgnoreCase)
-                .Any(group => group.Count() > Format.MaxCopiesPerName))
+            Format.ExceedsCopyLimit(cards))
         {
             throw new ArgumentException($"A deck needs {Format.DeckSize} valid playable cards, with at most {Format.MaxCopiesPerName} of each name.",
                 nameof(deck));
         }
         // Copy the ability lists so a caller cannot change the cards of a running duel.
-        return cards.Select(card => card with { Abilities = Array.AsReadOnly(card.Abilities.ToArray()) }).ToList();
+        return [.. cards.Select(card => card with { Abilities = Array.AsReadOnly(card.Abilities.ToArray()) })];
     }
 
     /// <summary>Enforces a rule.</summary>

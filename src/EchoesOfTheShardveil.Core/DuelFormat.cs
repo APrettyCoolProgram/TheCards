@@ -102,4 +102,11 @@ public sealed class DuelFormat
 
     /// <summary>Gets the maximum swaps possible with the configured opening hand size.</summary>
     public int MaxMulliganSwaps => Math.Min(OpeningHandSize, MulliganSwapLimit ?? OpeningHandSize);
+
+    /// <summary>Determines whether a deck has more copies of any card name than the format allows.</summary>
+    /// <param name="deck">The cards in the deck. Names are compared without regard to case.</param>
+    /// <returns><see langword="true"/> if a name exceeds <see cref="MaxCopiesPerName"/>.</returns>
+    public bool ExceedsCopyLimit(IEnumerable<CardDefinition> deck) =>
+        deck.GroupBy(card => card.Name, StringComparer.OrdinalIgnoreCase)
+            .Any(group => group.Count() > MaxCopiesPerName);
 }

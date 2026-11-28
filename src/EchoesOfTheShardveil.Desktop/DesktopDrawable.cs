@@ -10,6 +10,10 @@ namespace EchoesOfTheShardveil.Desktop;
 /// <summary>Synchronizes the DesktopGL back buffer with the SDL window's actual pixel size.</summary>
 internal sealed class DesktopDrawable : IDisposable
 {
+    /// <summary>The shape of SDL's functions that report a window size.</summary>
+    /// <param name="window">The SDL window handle.</param>
+    /// <param name="width">Receives the width.</param>
+    /// <param name="height">Receives the height.</param>
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     private delegate void WindowSizeQuery(nint window, out int width, out int height);
 

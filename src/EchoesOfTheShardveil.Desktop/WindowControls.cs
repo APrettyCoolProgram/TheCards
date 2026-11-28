@@ -29,14 +29,14 @@ internal sealed class WindowControls(GameAudio audio, bool isBoard, string? retu
     private const int IconMargin = 20;
     private const int IconGap = 10;
     private const float IconScale = (float)IconSize / IconDesignSize;
+    private readonly string forfeitMessage = $"You will return to {returnDestination ?? "the main menu"}.";
 
     private static readonly Color Border = new(82, 113, 120);
     private static readonly Color Panel = new(23, 38, 46);
-    private static readonly Vector2[] Ring = Enumerable.Range(0, 41)
+    private static readonly Vector2[] Ring = [.. Enumerable.Range(0, 41)
         .Select(i => new Vector2(
             22f + 20f * MathF.Cos(i * MathHelper.TwoPi / 40),
-            22f + 20f * MathF.Sin(i * MathHelper.TwoPi / 40)))
-        .ToArray();
+            22f + 20f * MathF.Sin(i * MathHelper.TwoPi / 40)))];
     private static readonly Vector2[][] ExitMark =
     [
         [new(25, 12), new(12, 12), new(12, 32), new(25, 32)],
@@ -135,7 +135,7 @@ internal sealed class WindowControls(GameAudio audio, bool isBoard, string? retu
             BitmapText.Draw(spriteBatch, font, isBoard ? "Forfeit the game?" : "Exit Echoes of the Shardveil?",
                 left, layout.Dialog.Top + 23, 32, UiColors.Ivory);
             BitmapText.Draw(spriteBatch, font,
-                isBoard ? $"You will return to {returnDestination ?? "the main menu"}." : "The application will close.",
+                isBoard ? forfeitMessage : "The application will close.",
                 left, layout.Dialog.Top + 69, 19, new Color(177, 192, 196));
             DrawButton(spriteBatch, pixel, font, layout.Cancel, "Cancel", Panel);
             DrawButton(spriteBatch, pixel, font, layout.Confirm, isBoard ? "Forfeit & return" : "Exit",

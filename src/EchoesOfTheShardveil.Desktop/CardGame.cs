@@ -86,10 +86,7 @@ internal sealed class CardGame : Game
     {
         if (disposing)
         {
-            if (currentScreen is BoardScreen board)
-            {
-                board.Dispose();
-            }
+            CloseBoardScreen();
             Window.TextInput -= HandleTextInput;
             Window.KeyDown -= HandleKeyDown;
             deckbuilder?.Dispose();
@@ -126,6 +123,15 @@ internal sealed class CardGame : Game
         }
     }
 
+    /// <summary>Releases the current screen if it is a board. The menu and deckbuilder are kept for reuse.</summary>
+    private void CloseBoardScreen()
+    {
+        if (currentScreen is BoardScreen board)
+        {
+            board.Dispose();
+        }
+    }
+
     /// <summary>Activates a screen and applies its window title.</summary>
     /// <param name="screen">The screen to show.</param>
     private void Show(IScreen screen)
@@ -142,12 +148,19 @@ internal sealed class CardGame : Game
         {
             ApplyTransition(transition);
         }
-        catch (Exception error) when (currentScreen is MenuScreen currentMenu &&
-            transition is ScreenTransition.OpenBoard or ScreenTransition.OpenDeckbuilder &&
-            error is IOException or InvalidDataException or UnauthorizedAccessException)
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException &&
+            currentScreen is MenuScreen or DeckbuilderUI)
         {
+            // The screen that asked is still showing, so it can report the problem.
             Console.Error.WriteLine(error);
-            currentMenu.ShowContentError(transition);
+            if (currentScreen is MenuScreen currentMenu)
+            {
+                currentMenu.ShowContentError(transition);
+            }
+            else
+            {
+                ((DeckbuilderUI)currentScreen).ShowPlaytestError();
+            }
         }
     }
 
@@ -165,19 +178,13 @@ internal sealed class CardGame : Game
                 Show(new BoardScreen(services, draft, draftPlaytest: true));
                 break;
             case ScreenTransition.OpenDeckbuilder when services is not null:
-                if (currentScreen is BoardScreen playtest)
-                {
-                    playtest.Dispose();
-                }
+                CloseBoardScreen();
                 deckbuilder ??= new DeckbuilderUI(services, savedDeck.Value);
                 deckbuilder.Activate();
                 Show(deckbuilder);
                 break;
             case ScreenTransition.ReturnToMenu when menu is not null:
-                if (currentScreen is BoardScreen board)
-                {
-                    board.Dispose();
-                }
+                CloseBoardScreen();
                 menu.Activate();
                 Show(menu);
                 break;

@@ -17,23 +17,23 @@ internal sealed class DeckbuilderUI : IScreen
     private const int VisibleRows = 14;
     private const int VisibleDetailLines = 8;
     private const int HighestEnergyBucket = 6;
-    private static readonly Rectangle Back = new(28, 28, 140, 42);
+    private static readonly Rectangle BackButton = new(28, 28, 140, 42);
     private static readonly Rectangle SearchField = new(480, 28, 286, 42);
-    private static readonly Rectangle ClearSearch = new(728, 34, 32, 30);
-    private static readonly Rectangle TypeFilter = new(782, 28, 144, 42);
-    private static readonly Rectangle Collection = new(28, 94, 668, 574);
-    private static readonly Rectangle SetFilter = new(186, 107, 164, 29);
-    private static readonly Rectangle InDeckFilter = new(360, 107, 112, 29);
-    private static readonly Rectangle SortCost = new(44, 140, 53, 24);
-    private static readonly Rectangle SortName = new(105, 140, 65, 24);
-    private static readonly Rectangle PreviousCards = new(600, 107, 36, 29);
-    private static readonly Rectangle NextCards = new(644, 107, 36, 29);
-    private static readonly Rectangle Details = new(714, 94, 378, 408);
-    private static readonly Rectangle Deck = new(714, 520, 378, 148);
-    private static readonly Rectangle Revert = new(500, 688, 132, 44);
-    private static readonly Rectangle Restore = new(642, 688, 150, 44);
-    private static readonly Rectangle ApplyDeck = new(802, 688, 146, 44);
-    private static readonly Rectangle PlayDraft = new(958, 688, 134, 44);
+    private static readonly Rectangle ClearSearchButton = new(728, 34, 32, 30);
+    private static readonly Rectangle TypeFilterButton = new(782, 28, 144, 42);
+    private static readonly Rectangle CollectionPanel = new(28, 94, 668, 574);
+    private static readonly Rectangle SetFilterButton = new(186, 107, 164, 29);
+    private static readonly Rectangle InDeckFilterButton = new(360, 107, 112, 29);
+    private static readonly Rectangle SortCostButton = new(44, 140, 53, 24);
+    private static readonly Rectangle SortNameButton = new(105, 140, 65, 24);
+    private static readonly Rectangle PreviousPageButton = new(600, 107, 36, 29);
+    private static readonly Rectangle NextPageButton = new(644, 107, 36, 29);
+    private static readonly Rectangle DetailsPanel = new(714, 94, 378, 408);
+    private static readonly Rectangle DeckPanel = new(714, 520, 378, 148);
+    private static readonly Rectangle RevertButton = new(500, 688, 132, 44);
+    private static readonly Rectangle RestoreButton = new(642, 688, 150, 44);
+    private static readonly Rectangle ApplyButton = new(802, 688, 146, 44);
+    private static readonly Rectangle PlayDraftButton = new(958, 688, 134, 44);
     private static readonly Color Background = new(12, 17, 22);
     private static readonly Color Panel = new(23, 34, 42);
     private static readonly Color Border = new(59, 80, 87);
@@ -46,8 +46,8 @@ internal sealed class DeckbuilderUI : IScreen
     private readonly WindowControls controls;
     private readonly InputTracker input = new();
     private readonly IReadOnlyList<CardDefinition> starter = StarterDecks.Create();
-    private readonly (string Set, CardDefinition Card)[] cards;
-    private readonly int[] copies;
+    private readonly (string Set, CardDefinition Card)[] collectionCards;
+    private readonly int[] draftCopies;
     private readonly string[] setNames;
     private readonly CardType[] cardTypes;
     private int[] filteredCards = [];
@@ -57,7 +57,7 @@ internal sealed class DeckbuilderUI : IScreen
     private string search = "";
     private int setFilterIndex = -1;
     private int typeFilterIndex = -1;
-    private int[] activeCopies;
+    private int[] appliedCopies;
     private int selected = -1;
     private string? artworkPath;
     private bool loadArtwork;
@@ -65,6 +65,8 @@ internal sealed class DeckbuilderUI : IScreen
     private int firstVisible;
     private Point? pointer;
     private List<(string Text, Color Color)> detailLines = [];
+    private string selectedTypeLine = "";
+    private string selectedSetLine = "";
     private int detailScroll;
     private string status = "";
 
@@ -75,37 +77,47 @@ internal sealed class DeckbuilderUI : IScreen
     {
         this.services = services;
         this.savedDeck = savedDeck;
+        CardRulesText.LoadCatalogs();
         controls = new WindowControls(services.Audio, isBoard: false);
-        cards = StarterDecks.PlayerPool.OrderBy(entry => entry.Card.Cost).ThenBy(entry => entry.Card.Name)
-            .ThenBy(entry => entry.Set, StringComparer.Ordinal).ToArray();
-        copies = new int[cards.Length];
-        setNames = cards.Select(entry => entry.Set).Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal).ToArray();
-        cardTypes = cards.Select(entry => entry.Card.Type).Distinct().Order().ToArray();
+        collectionCards = [.. StarterDecks.PlayerPool.OrderBy(entry => entry.Card.Cost).ThenBy(entry => entry.Card.Name)
+            .ThenBy(entry => entry.Set, StringComparer.Ordinal)];
+        draftCopies = new int[collectionCards.Length];
+        setNames = [.. collectionCards.Select(entry => entry.Set).Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)];
+        cardTypes = [.. collectionCards.Select(entry => entry.Card.Type).Distinct().Order()];
         SetDraft(savedDeck.ActiveDeck);
         if (savedDeck.UsedStarterFallback)
         {
             status = "Saved deck unavailable. Using starter deck.";
         }
-        activeCopies = (int[])copies.Clone();
+        appliedCopies = (int[])draftCopies.Clone();
     }
 
     /// <inheritdoc />
     public string Title => "Echoes of the Shardveil - Deckbuilder";
 
+    /// <summary>Gets the largest first row the list can scroll to.</summary>
     private int MaximumOffset => Math.Max(0, filteredCards.Length - VisibleRows);
+    /// <summary>Gets the filtered row just past the last visible one.</summary>
     private int VisibleEnd => Math.Min(firstVisible + VisibleRows, filteredCards.Length);
-    private int CardCount => copies.Sum();
-    private bool HasDraftChanges => !copies.SequenceEqual(activeCopies);
+    /// <summary>Gets the number of cards in the draft.</summary>
+    private int CardCount => draftCopies.Sum();
+    /// <summary>Gets whether the draft differs from the applied deck.</summary>
+    private bool HasDraftChanges => !draftCopies.SequenceEqual(appliedCopies);
+    /// <summary>Gets whether the draft has the required number of cards.</summary>
     private bool HasCompleteDeck => CardCount == MatchFormats.Active.DeckSize;
+    /// <summary>Gets whether the draft can be saved as the active deck.</summary>
     private bool CanApply => HasCompleteDeck &&
         (savedDeck.UsedStarterFallback || HasDraftChanges);
 
     /// <summary>Gets a snapshot for a playtest without applying or saving the draft.</summary>
     /// <returns>The complete draft, or null if it still needs edits.</returns>
     public IReadOnlyList<CardDefinition>? CreatePlaytestDeck() => HasCompleteDeck
-        ? cards.SelectMany((entry, index) => Enumerable.Repeat(entry.Card, copies[index])).ToArray()
+        ? collectionCards.SelectMany((entry, index) => Enumerable.Repeat(entry.Card, draftCopies[index])).ToArray()
         : null;
+
+    /// <summary>Reports that a playtest could not load its content, keeping the draft open.</summary>
+    public void ShowPlaytestError() => status = "Could not start playtest. Check AppData.";
 
     /// <summary>Ignores the click that opened the editor from the menu.</summary>
     public void Activate()
@@ -214,25 +226,25 @@ internal sealed class DeckbuilderUI : IScreen
             }
             if (action == WindowControlResult.Ignored && pointer is { } position)
             {
-                if (Back.Contains(position))
+                if (BackButton.Contains(position))
                 {
                     return ScreenTransition.ReturnToMenu;
                 }
-                if (HasCompleteDeck && PlayDraft.Contains(position))
+                if (HasCompleteDeck && PlayDraftButton.Contains(position))
                 {
                     return ScreenTransition.PlayDraft;
                 }
-                Edit(position);
+                HandleClick(position);
             }
         }
 
         if (!controls.IsConfirming && frame.ScrollDirection != 0 && pointer is { } scrollPosition)
         {
-            if (Collection.Contains(scrollPosition))
+            if (CollectionPanel.Contains(scrollPosition))
             {
                 ScrollCards(frame.ScrollDirection);
             }
-            else if (Details.Contains(scrollPosition))
+            else if (DetailsPanel.Contains(scrollPosition))
             {
                 ScrollDetails(frame.ScrollDirection);
             }
@@ -256,22 +268,23 @@ internal sealed class DeckbuilderUI : IScreen
         var transform = Matrix.CreateScale((float)fitted.Width / Width, (float)fitted.Height / Height, 1)
             * Matrix.CreateTranslation(fitted.X, fitted.Y, 0);
         services.SpriteBatch.Begin(samplerState: SamplerState.LinearClamp, transformMatrix: transform);
-        Button(Back, "Main menu", true);
-        Text("Deckbuilder", 192, 22, 43, UiColors.Ivory);
+        DrawButton(BackButton, "Main menu", true);
+        DrawText("Deckbuilder", 192, 22, 43, UiColors.Ivory);
         DrawSearch();
         if (cardTypes.Length > 1)
         {
-            var type = typeFilterIndex < 0 ? "All types" : cardTypes[typeFilterIndex].ToString();
-            Button(TypeFilter, type + " >", true, primary: typeFilterIndex >= 0);
+            Span<char> text = stackalloc char[32];
+            DrawButton(TypeFilterButton, typeFilterIndex < 0 ? "All types >"
+                : BitmapText.Format(text, $"{cardTypes[typeFilterIndex]} >"), true, primary: typeFilterIndex >= 0);
         }
         DrawCollection();
         DrawDetails();
         DrawDeckSummary();
-        Text(status.Length == 0 && HasDraftChanges ? "Unsaved changes" : status, 28, 699, 20, Muted);
-        Button(Revert, "Revert edits", HasDraftChanges);
-        Button(Restore, "Restore starter", true);
-        Button(ApplyDeck, "Use this deck", CanApply, primary: true);
-        Button(PlayDraft, "Play draft", HasCompleteDeck);
+        DrawText(status.Length == 0 && HasDraftChanges ? "Unsaved changes" : status, 28, 699, 20, Muted);
+        DrawButton(RevertButton, "Revert edits", HasDraftChanges);
+        DrawButton(RestoreButton, "Restore starter", true);
+        DrawButton(ApplyButton, "Use this deck", CanApply, primary: true);
+        DrawButton(PlayDraftButton, "Play draft", HasCompleteDeck);
         services.SpriteBatch.End();
         controls.Draw(services.SpriteBatch, services.Pixel, services.Font, viewport);
     }
@@ -282,35 +295,35 @@ internal sealed class DeckbuilderUI : IScreen
     /// <inheritdoc />
     public void Dispose() => artworkTexture?.Dispose();
 
-    /// <summary>Applies clicks to the draft, the selected card or the active deck.</summary>
+    /// <summary>Handles a click on the search field, deck buttons, filters, paging or a card row.</summary>
     /// <param name="position">The pointer in design coordinates.</param>
-    private void Edit(Point position)
+    private void HandleClick(Point position)
     {
         searchFocused = SearchField.Contains(position);
         if (searchFocused)
         {
-            if (search.Length > 0 && ClearSearch.Contains(position))
+            if (search.Length > 0 && ClearSearchButton.Contains(position))
             {
                 SetSearch("");
             }
         }
-        else if (Revert.Contains(position) && HasDraftChanges)
+        else if (RevertButton.Contains(position) && HasDraftChanges)
         {
             SetDraft(savedDeck.ActiveDeck);
             status = "Draft reverted to the applied deck.";
         }
-        else if (Restore.Contains(position))
+        else if (RestoreButton.Contains(position))
         {
             SetDraft(starter);
             status = "Starter deck restored to the draft.";
         }
-        else if (ApplyDeck.Contains(position) && CanApply)
+        else if (ApplyButton.Contains(position) && CanApply)
         {
-            var entries = cards.Select((card, index) => (card.Set, card.Card, Copies: copies[index]))
+            var entries = collectionCards.Select((card, index) => (card.Set, card.Card, Copies: draftCopies[index]))
                 .Where(entry => entry.Copies > 0);
             if (savedDeck.TryApply(entries))
             {
-                activeCopies = (int[])copies.Clone();
+                appliedCopies = (int[])draftCopies.Clone();
                 status = "Deck saved for Single player.";
             }
             else
@@ -318,33 +331,30 @@ internal sealed class DeckbuilderUI : IScreen
                 status = "Could not save deck. Your draft is still here.";
             }
         }
-        else if (setNames.Length > 1 && SetFilter.Contains(position))
+        else if (setNames.Length > 1 && SetFilterButton.Contains(position))
         {
             CycleSetFilter();
         }
-        else if (cardTypes.Length > 1 && TypeFilter.Contains(position))
+        else if (cardTypes.Length > 1 && TypeFilterButton.Contains(position))
         {
             typeFilterIndex = typeFilterIndex == cardTypes.Length - 1 ? -1 : typeFilterIndex + 1;
-            firstVisible = 0;
-            RefreshCollection();
+            ShowCollectionFromTop();
         }
-        else if (InDeckFilter.Contains(position))
+        else if (InDeckFilterButton.Contains(position))
         {
             inDeckOnly = !inDeckOnly;
-            firstVisible = 0;
-            RefreshCollection();
+            ShowCollectionFromTop();
         }
-        else if (SortCost.Contains(position) || SortName.Contains(position))
+        else if (SortCostButton.Contains(position) || SortNameButton.Contains(position))
         {
-            sortByName = SortName.Contains(position);
-            firstVisible = 0;
-            RefreshCollection();
+            sortByName = SortNameButton.Contains(position);
+            ShowCollectionFromTop();
         }
-        else if (PreviousCards.Contains(position))
+        else if (PreviousPageButton.Contains(position))
         {
             ScrollCards(-VisibleRows);
         }
-        else if (NextCards.Contains(position))
+        else if (NextPageButton.Contains(position))
         {
             ScrollCards(VisibleRows);
         }
@@ -353,25 +363,25 @@ internal sealed class DeckbuilderUI : IScreen
             for (var visibleIndex = firstVisible; visibleIndex < VisibleEnd; visibleIndex++)
             {
                 var index = filteredCards[visibleIndex];
-                var row = Row(visibleIndex - firstVisible);
+                var row = RowBounds(visibleIndex - firstVisible);
                 if (!row.Contains(position))
                 {
                     continue;
                 }
 
                 Select(index);
-                if (RemoveButton(row).Contains(position) && copies[index] > 0)
+                if (RemoveButtonBounds(row).Contains(position) && draftCopies[index] > 0)
                 {
-                    copies[index]--;
+                    draftCopies[index]--;
                     status = "";
-                    if (inDeckOnly && copies[index] == 0)
+                    if (inDeckOnly && draftCopies[index] == 0)
                     {
                         RefreshCollection();
                     }
                 }
-                else if (AddButton(row).Contains(position) && CanAdd(index, CardCount))
+                else if (AddButtonBounds(row).Contains(position) && CanAdd(index, CardCount))
                 {
-                    copies[index]++;
+                    draftCopies[index]++;
                     status = "";
                 }
                 break;
@@ -383,8 +393,7 @@ internal sealed class DeckbuilderUI : IScreen
     private void CycleSetFilter()
     {
         setFilterIndex = setFilterIndex == setNames.Length - 1 ? -1 : setFilterIndex + 1;
-        firstVisible = 0;
-        RefreshCollection();
+        ShowCollectionFromTop();
     }
 
     /// <summary>Updates the search text and returns to the first matching row.</summary>
@@ -392,6 +401,12 @@ internal sealed class DeckbuilderUI : IScreen
     private void SetSearch(string text)
     {
         search = text;
+        ShowCollectionFromTop();
+    }
+
+    /// <summary>Reapplies sorting and filters and returns to the first matching row.</summary>
+    private void ShowCollectionFromTop()
+    {
         firstVisible = 0;
         RefreshCollection();
     }
@@ -400,16 +415,17 @@ internal sealed class DeckbuilderUI : IScreen
     private void RefreshCollection()
     {
         var query = search.Trim();
-        var matching = Enumerable.Range(0, cards.Length)
-            .Where(index => (setFilterIndex < 0 || cards[index].Set == setNames[setFilterIndex]) &&
-                (typeFilterIndex < 0 || cards[index].Card.Type == cardTypes[typeFilterIndex]) &&
-                (!inDeckOnly || copies[index] > 0) &&
-                cards[index].Card.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
+        var matching = Enumerable.Range(0, collectionCards.Length)
+            .Where(index => (setFilterIndex < 0 || collectionCards[index].Set == setNames[setFilterIndex]) &&
+                (typeFilterIndex < 0 || collectionCards[index].Card.Type == cardTypes[typeFilterIndex]) &&
+                (!inDeckOnly || draftCopies[index] > 0) &&
+                collectionCards[index].Card.Name.Contains(query, StringComparison.OrdinalIgnoreCase));
         if (sortByName)
         {
-            matching = matching.OrderBy(index => cards[index].Card.Name, StringComparer.CurrentCultureIgnoreCase);
+            matching = matching.OrderBy(index => collectionCards[index].Card.Name,
+                StringComparer.CurrentCultureIgnoreCase);
         }
-        filteredCards = matching.ToArray();
+        filteredCards = [.. matching];
         firstVisible = Math.Min(firstVisible, MaximumOffset);
         if (filteredCards.Length == 0)
         {
@@ -432,18 +448,27 @@ internal sealed class DeckbuilderUI : IScreen
     /// <param name="index">The card to add.</param>
     /// <param name="count">The current draft size.</param>
     /// <returns>Whether another copy can be added.</returns>
-    private bool CanAdd(int index, int count) =>
-        count < MatchFormats.Active.DeckSize &&
-        copies.Where((_, other) => StringComparer.OrdinalIgnoreCase.Equals(cards[index].Card.Name, cards[other].Card.Name))
-            .Sum() < MatchFormats.Active.MaxCopiesPerName;
+    private bool CanAdd(int index, int count)
+    {
+        // A plain loop, because every visible row asks this on every frame.
+        var sameName = 0;
+        for (var other = 0; other < collectionCards.Length; other++)
+        {
+            if (StringComparer.OrdinalIgnoreCase.Equals(collectionCards[index].Card.Name, collectionCards[other].Card.Name))
+            {
+                sameName += draftCopies[other];
+            }
+        }
+        return count < MatchFormats.Active.DeckSize && sameName < MatchFormats.Active.MaxCopiesPerName;
+    }
 
     /// <summary>Replaces the draft with the given deck and refreshes the collection.</summary>
     /// <param name="deck">The cards to put into the draft.</param>
     private void SetDraft(IReadOnlyList<CardDefinition> deck)
     {
-        for (var index = 0; index < cards.Length; index++)
+        for (var index = 0; index < collectionCards.Length; index++)
         {
-            copies[index] = deck.Count(card => ReferenceEquals(card, cards[index].Card));
+            draftCopies[index] = deck.Count(card => ReferenceEquals(card, collectionCards[index].Card));
         }
         RefreshCollection();
     }
@@ -457,12 +482,14 @@ internal sealed class DeckbuilderUI : IScreen
             return;
         }
 
-        var (set, card) = cards[index];
-        var presentation = CardSet.Presentation(set, card.Id);
+        var (set, card) = collectionCards[index];
+        var presentation = CardSet.GetPresentation(set, card.Id);
         selected = index;
+        selectedTypeLine = CardRulesText.TypeLine(card);
+        selectedSetLine = $"Set: {set}";
         detailScroll = 0;
-        detailLines = CardRulesText.Describe(card).SelectMany(rule => BitmapText.Wrap(rule, 37))
-            .Select(rule => (rule, UiColors.Ivory)).ToList();
+        detailLines = [.. CardRulesText.Describe(card).SelectMany(rule => BitmapText.Wrap(rule, 37))
+            .Select(rule => (rule, UiColors.Ivory))];
         if (!string.IsNullOrWhiteSpace(presentation?.FlavorText))
         {
             if (detailLines.Count > 0)
@@ -522,21 +549,27 @@ internal sealed class DeckbuilderUI : IScreen
     /// <summary>Draws deck size and the energy cost of every copy in the draft.</summary>
     private void DrawDeckSummary()
     {
-        Box(Deck, Panel);
+        DrawBox(DeckPanel, Panel);
         var count = CardCount;
         var format = MatchFormats.Active;
-        Text("Your deck", 734, 534, 29, UiColors.Ivory);
-        Text($"{count} / {format.DeckSize} cards", 734, 574, 22, Gold);
+        DrawText("Your deck", 734, 534, 29, UiColors.Ivory);
+        Span<char> text = stackalloc char[48];
+        DrawText(BitmapText.Format(text, $"{count} / {format.DeckSize} cards"), 734, 574, 22, Gold);
         const int meterWidth = 140;
-        Fill(new Rectangle(734, 611, meterWidth, 5), Border);
-        Fill(new Rectangle(734, 611, (int)((long)meterWidth * count / format.DeckSize), 5), Gold);
-        Text($"{format.MaxCopiesPerName} copies per name", 734, 631, 16, Muted);
+        FillRectangle(new Rectangle(734, 611, meterWidth, 5), Border);
+        FillRectangle(new Rectangle(734, 611, (int)((long)meterWidth * count / format.DeckSize), 5), Gold);
+        DrawText(BitmapText.Format(text, $"{format.MaxCopiesPerName} copies per name"), 734, 631, 16, Muted);
 
-        Text("Energy curve", 895, 534, 19, UiColors.Ivory);
+        DrawText("Energy curve", 895, 534, 19, UiColors.Ivory);
         const int baseline = 626;
-        Fill(new Rectangle(894, baseline, 175, 1), Border);
-        var buckets = CountEnergyCosts();
-        var peak = Math.Max(1, buckets.Max());
+        FillRectangle(new Rectangle(894, baseline, 175, 1), Border);
+        Span<int> buckets = stackalloc int[HighestEnergyBucket + 1];
+        CountEnergyCosts(buckets);
+        var peak = 1;
+        foreach (var bucket in buckets)
+        {
+            peak = Math.Max(peak, bucket);
+        }
         for (var cost = 0; cost < buckets.Length; cost++)
         {
             var center = 906 + cost * 25;
@@ -544,25 +577,23 @@ internal sealed class DeckbuilderUI : IScreen
             if (copiesAtCost > 0)
             {
                 var barHeight = Math.Max(2, (int)(48L * copiesAtCost / peak));
-                Fill(new Rectangle(center - 7, baseline - barHeight, 14, barHeight), Teal);
-                BitmapText.DrawCentered(services.SpriteBatch, services.Font, $"{copiesAtCost}",
+                FillRectangle(new Rectangle(center - 7, baseline - barHeight, 14, barHeight), Teal);
+                BitmapText.DrawCentered(services.SpriteBatch, services.Font, BitmapText.Format(text, $"{copiesAtCost}"),
                     center, baseline - barHeight - 16, 14, UiColors.Ivory);
             }
-            var label = cost == HighestEnergyBucket ? $"{cost}+" : $"{cost}";
+            var label = BitmapText.Format(text, $"{cost}{(cost == HighestEnergyBucket ? "+" : "")}");
             BitmapText.DrawCentered(services.SpriteBatch, services.Font, label, center, baseline + 5, 15, Muted);
         }
     }
 
     /// <summary>Counts draft copies at each energy cost, grouping higher costs into the final bucket.</summary>
-    /// <returns>The counts in ascending cost order.</returns>
-    private int[] CountEnergyCosts()
+    /// <param name="buckets">Receives the counts in ascending cost order. It must start zeroed.</param>
+    private void CountEnergyCosts(Span<int> buckets)
     {
-        var buckets = new int[HighestEnergyBucket + 1];
-        for (var index = 0; index < cards.Length; index++)
+        for (var index = 0; index < collectionCards.Length; index++)
         {
-            buckets[Math.Min(cards[index].Card.Cost, HighestEnergyBucket)] += copies[index];
+            buckets[Math.Min(collectionCards[index].Card.Cost, HighestEnergyBucket)] += draftCopies[index];
         }
-        return buckets;
     }
 
     /// <summary>Draws the name filter, its text cursor and its clear button.</summary>
@@ -572,79 +603,81 @@ internal sealed class DeckbuilderUI : IScreen
         const int textLimit = 22;
         const int left = 492;
         const int top = 39;
-        Box(SearchField, searchFocused ? Teal : Panel);
-        var visibleText = search.Length <= textLimit ? search : search[^textLimit..];
-        Text(search.Length == 0 ? "Search card names" : visibleText, left, top, textHeight,
+        DrawBox(SearchField, searchFocused ? Teal : Panel);
+        var visibleText = search.AsSpan(Math.Max(0, search.Length - textLimit));
+        DrawText(search.Length == 0 ? "Search card names" : visibleText, left, top, textHeight,
             search.Length == 0 ? Muted : UiColors.Ivory);
         if (searchFocused && search.Length > 0)
         {
-            Fill(new Rectangle(left + visibleText.Length * BitmapText.Advance(textHeight), top + 1, 1, 18), Gold);
+            FillRectangle(new Rectangle(left + visibleText.Length * BitmapText.Advance(textHeight), top + 1, 1, 18), Gold);
         }
         if (search.Length > 0)
         {
-            Button(ClearSearch, "X", true);
+            DrawButton(ClearSearchButton, "X", true);
         }
     }
 
     /// <summary>Draws the card list and the copy controls for each card.</summary>
     private void DrawCollection()
     {
-        Box(Collection, Panel);
-        Text("Card pool", 48, 106, 29, UiColors.Ivory);
-        Button(SortCost, "Cost", true, primary: !sortByName);
-        Button(SortName, "Name", true, primary: sortByName);
-        Text("Type", 391, 143, 17, Muted);
-        Text("Set", 454, 143, 17, Muted);
-        Text("Copies", 575, 143, 17, Muted);
+        DrawBox(CollectionPanel, Panel);
+        DrawText("Card pool", 48, 106, 29, UiColors.Ivory);
+        DrawButton(SortCostButton, "Cost", true, primary: !sortByName);
+        DrawButton(SortNameButton, "Name", true, primary: sortByName);
+        DrawText("Type", 391, 143, 17, Muted);
+        DrawText("Set", 454, 143, 17, Muted);
+        DrawText("Copies", 575, 143, 17, Muted);
         if (setNames.Length > 1)
         {
-            var label = setFilterIndex < 0 ? "All sets" : BitmapText.Wrap(setNames[setFilterIndex], 12, 1)[0];
-            Button(SetFilter, label + " >", true);
+            var label = setFilterIndex < 0 ? "All sets" : BitmapText.Truncate(setNames[setFilterIndex], 12);
+            Span<char> setText = stackalloc char[32];
+            DrawButton(SetFilterButton, BitmapText.Format(setText, $"{label} >"), true);
         }
-        Button(InDeckFilter, "In deck", true, primary: inDeckOnly);
+        DrawButton(InDeckFilterButton, "In deck", true, primary: inDeckOnly);
         if (filteredCards.Length == 0)
         {
-            Text("No cards match these filters.", 48, 176, 20, Muted);
+            DrawText("No cards match these filters.", 48, 176, 20, Muted);
         }
+        Span<char> text = stackalloc char[48];
         if (MaximumOffset > 0)
         {
-            Text($"{firstVisible + 1}-{VisibleEnd} of {filteredCards.Length}", 483, 112, 16, Muted);
-            Button(PreviousCards, "<", firstVisible > 0);
-            Button(NextCards, ">", firstVisible < MaximumOffset);
+            DrawText(BitmapText.Format(text, $"{firstVisible + 1}-{VisibleEnd} of {filteredCards.Length}"), 483, 112, 16, Muted);
+            DrawButton(PreviousPageButton, "<", firstVisible > 0);
+            DrawButton(NextPageButton, ">", firstVisible < MaximumOffset);
         }
 
         var count = CardCount;
         for (var visibleIndex = firstVisible; visibleIndex < VisibleEnd; visibleIndex++)
         {
             var index = filteredCards[visibleIndex];
-            var row = Row(visibleIndex - firstVisible);
-            var (set, card) = cards[index];
-            Fill(row, index == selected ? Teal : new Color(29, 43, 51));
+            var row = RowBounds(visibleIndex - firstVisible);
+            var (set, card) = collectionCards[index];
+            FillRectangle(row, index == selected ? Teal : new Color(29, 43, 51));
             if (index == selected)
             {
-                Fill(new Rectangle(row.X, row.Y, 3, row.Height), Gold);
+                FillRectangle(new Rectangle(row.X, row.Y, 3, row.Height), Gold);
             }
 
-            Text($"{card.Cost}", 60, row.Top + 5, 22, Gold);
-            Text(BitmapText.Wrap(card.Name, 24, 1)[0], 111, row.Top + 5, 22, UiColors.Ivory);
-            Text(card.Type.ToString(), 391, row.Top + 6, 20, Muted);
-            Text(BitmapText.Wrap(set, 9, 1)[0], 454, row.Top + 7, 17, Muted);
-            Text($"{copies[index]}", 595, row.Top + 5, 22, UiColors.Ivory);
-            Button(RemoveButton(row), "-", copies[index] > 0);
-            Button(AddButton(row), "+", CanAdd(index, count));
+            DrawText(BitmapText.Format(text, $"{card.Cost}"), 60, row.Top + 5, 22, Gold);
+            DrawText(BitmapText.Truncate(card.Name, 24), 111, row.Top + 5, 22, UiColors.Ivory);
+            DrawText(BitmapText.Format(text, $"{card.Type}"), 391, row.Top + 6, 20, Muted);
+            DrawText(BitmapText.Truncate(set, 9), 454, row.Top + 7, 17, Muted);
+            DrawText(BitmapText.Format(text, $"{draftCopies[index]}"), 595, row.Top + 5, 22, UiColors.Ivory);
+            DrawButton(RemoveButtonBounds(row), "-", draftCopies[index] > 0);
+            DrawButton(AddButtonBounds(row), "+", CanAdd(index, count));
         }
     }
 
     /// <summary>Draws the selected card's stats and rules.</summary>
     private void DrawDetails()
     {
-        Box(Details, Panel);
+        DrawBox(DetailsPanel, Panel);
         if (selected < 0)
         {
             return;
         }
 
-        var (set, card) = cards[selected];
+        var card = collectionCards[selected].Card;
         LoadArtwork();
         if (artworkTexture is { } image)
         {
@@ -653,52 +686,52 @@ internal sealed class DeckbuilderUI : IScreen
             services.SpriteBatch.Draw(image, bounds, Color.White);
         }
 
-        Text(BitmapText.Wrap(card.Name, 23, 1)[0], 734, 113, 29, UiColors.Ivory);
-        var type = string.IsNullOrEmpty(card.Subtype) ? card.Type.ToString() : $"{card.Type} / {card.Subtype}";
-        Text(BitmapText.Wrap(type, artworkTexture is null ? 33 : 18, 1)[0], 734, 153, 21, Muted);
-        Text(BitmapText.Wrap($"Set: {set}", artworkTexture is null ? 37 : 20, 1)[0], 734, 173, 18, Muted);
-        Text($"{card.Cost} energy", 734, 193, 22, Gold);
+        DrawText(BitmapText.Truncate(card.Name, 23), 734, 113, 29, UiColors.Ivory);
+        DrawText(BitmapText.Truncate(selectedTypeLine, artworkTexture is null ? 33 : 18), 734, 153, 21, Muted);
+        DrawText(BitmapText.Truncate(selectedSetLine, artworkTexture is null ? 37 : 20), 734, 173, 18, Muted);
+        Span<char> text = stackalloc char[48];
+        DrawText(BitmapText.Format(text, $"{card.Cost} energy"), 734, 193, 22, Gold);
         if (card.Type == CardType.Unit)
         {
-            Text($"{card.Power} Power   {card.Health} Health", 734, 227, 22, UiColors.Ivory);
+            DrawText(BitmapText.Format(text, $"{card.Power} Power   {card.Health} Health"), 734, 227, 22, UiColors.Ivory);
         }
-        Fill(new Rectangle(734, 269, 338, 1), Border);
+        FillRectangle(new Rectangle(734, 269, 338, 1), Border);
         var end = Math.Min(detailScroll + VisibleDetailLines, detailLines.Count);
         for (var index = detailScroll; index < end; index++)
         {
             var line = detailLines[index];
-            Text(line.Text, 734, 286 + (index - detailScroll) * 25, 19, line.Color);
+            DrawText(line.Text, 734, 286 + (index - detailScroll) * 25, 19, line.Color);
         }
         if (detailLines.Count > VisibleDetailLines)
         {
-            Text($"Scroll  {detailScroll + 1}-{end} of {detailLines.Count}", 734, 481, 15, Muted);
+            DrawText(BitmapText.Format(text, $"Scroll  {detailScroll + 1}-{end} of {detailLines.Count}"), 734, 481, 15, Muted);
         }
     }
 
     /// <summary>Gets the design bounds of a card row.</summary>
     /// <param name="index">The card's index.</param>
     /// <returns>The row bounds.</returns>
-    private static Rectangle Row(int index) => new(44, 167 + index * RowHeight, 636, RowHeight - 2);
+    private static Rectangle RowBounds(int index) => new(44, 167 + index * RowHeight, 636, RowHeight - 2);
 
     /// <summary>Gets the bounds of the button that removes one copy.</summary>
     /// <param name="row">The card row.</param>
     /// <returns>The remove button bounds.</returns>
-    private static Rectangle RemoveButton(Rectangle row) => new(540, row.Y + 2, 32, 29);
+    private static Rectangle RemoveButtonBounds(Rectangle row) => new(540, row.Y + 2, 32, 29);
 
     /// <summary>Gets the bounds of the button that adds one copy.</summary>
     /// <param name="row">The card row.</param>
     /// <returns>The add button bounds.</returns>
-    private static Rectangle AddButton(Rectangle row) => new(632, row.Y + 2, 32, 29);
+    private static Rectangle AddButtonBounds(Rectangle row) => new(632, row.Y + 2, 32, 29);
 
     /// <summary>Draws a button with hover and disabled states.</summary>
     /// <param name="bounds">The button bounds.</param>
     /// <param name="label">The button caption.</param>
     /// <param name="enabled">Whether the button can be used.</param>
     /// <param name="primary">Whether to accent the main action.</param>
-    private void Button(Rectangle bounds, string label, bool enabled, bool primary = false)
+    private void DrawButton(Rectangle bounds, ReadOnlySpan<char> label, bool enabled, bool primary = false)
     {
         var hovered = enabled && pointer is { } position && bounds.Contains(position) && !controls.IsConfirming;
-        Box(bounds, hovered ? new Color(53, 99, 101) : primary && enabled ? Teal : Panel);
+        DrawBox(bounds, hovered ? new Color(53, 99, 101) : primary && enabled ? Teal : Panel);
         const int textHeight = 20;
         BitmapText.DrawCentered(services.SpriteBatch, services.Font, label, bounds.Center.X,
             bounds.Center.Y - textHeight / 2, textHeight, enabled ? UiColors.Ivory : new Color(121, 141, 145));
@@ -707,17 +740,17 @@ internal sealed class DeckbuilderUI : IScreen
     /// <summary>Draws a panel with a one-pixel border.</summary>
     /// <param name="bounds">The outer bounds.</param>
     /// <param name="color">The interior color.</param>
-    private void Box(Rectangle bounds, Color color)
+    private void DrawBox(Rectangle bounds, Color color)
     {
-        Fill(bounds, Border);
+        FillRectangle(bounds, Border);
         bounds.Inflate(-1, -1);
-        Fill(bounds, color);
+        FillRectangle(bounds, color);
     }
 
     /// <summary>Draws a filled rectangle.</summary>
     /// <param name="bounds">The rectangle to fill.</param>
     /// <param name="color">The fill color.</param>
-    private void Fill(Rectangle bounds, Color color) => services.SpriteBatch.Draw(services.Pixel, bounds, color);
+    private void FillRectangle(Rectangle bounds, Color color) => services.SpriteBatch.Draw(services.Pixel, bounds, color);
 
     /// <summary>Draws a line in the shared bitmap font.</summary>
     /// <param name="label">The text to draw.</param>
@@ -725,6 +758,6 @@ internal sealed class DeckbuilderUI : IScreen
     /// <param name="y">The top edge.</param>
     /// <param name="height">The text height.</param>
     /// <param name="color">The text color.</param>
-    private void Text(string label, int x, int y, int height, Color color) =>
+    private void DrawText(ReadOnlySpan<char> label, int x, int y, int height, Color color) =>
         BitmapText.Draw(services.SpriteBatch, services.Font, label, x, y, height, color);
 }
