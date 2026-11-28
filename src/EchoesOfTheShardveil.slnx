@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="EchoesOfTheShardveil.Core/EchoesOfTheShardveil.Core.csproj" />
   <Project Path="EchoesOfTheShardveil.Desktop/EchoesOfTheShardveil.Desktop.csproj" />
+  <Project Path="EchoesOfTheShardveil.Tests/EchoesOfTheShardveil.Tests.csproj" />
 </Solution>

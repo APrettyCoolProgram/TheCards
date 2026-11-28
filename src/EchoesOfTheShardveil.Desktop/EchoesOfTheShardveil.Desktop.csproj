@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\EchoesOfTheShardveil.Core\EchoesOfTheShardveil.Core.csproj" />
+    <!-- The tests cover the data loading and opponent logic, which is internal. -->
+    <InternalsVisibleTo Include="EchoesOfTheShardveil.Tests" />
   </ItemGroup>
 
   <ItemGroup>

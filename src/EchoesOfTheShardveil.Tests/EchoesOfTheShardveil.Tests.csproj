@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- xunit.v3 test projects are executables that run on Microsoft.Testing.Platform. -->
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" Version="4.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The desktop reference also copies the shipped AppData beside the tests. -->
+    <ProjectReference Include="..\EchoesOfTheShardveil.Core\EchoesOfTheShardveil.Core.csproj" />
+    <ProjectReference Include="..\EchoesOfTheShardveil.Desktop\EchoesOfTheShardveil.Desktop.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>
